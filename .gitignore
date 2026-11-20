@@ -1,0 +1,15 @@
+# Build und Abhängigkeiten
+dist/
+node_modules/
+.astro/
+
+# Umgebung und Geheimnisse
+.env
+.env.*
+
+# System
+.DS_Store
+npm-debug.log*
+
+# Lokale Claude-Einstellungen
+.claude/settings.local.json

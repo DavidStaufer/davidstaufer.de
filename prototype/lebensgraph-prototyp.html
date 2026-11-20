@@ -1,0 +1,902 @@
+<title>Lebensgraph Prototyp</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  PROTOTYP – Wegwerf-Code. Frage: Wie soll der Lebensgraph von DavidStaufer.de aussehen?
+  Drei strukturell verschiedene Varianten, umschaltbar über die Leiste unten bzw. ←/→ und den Hash (#netz, #blasen, #linien).
+  Inhalte: echte Module/Projekte/Hobbys aus der Planung vom 20.11.2026, alle Texte sind Entwürfe.
+-->
+<style>
+/* Layout: vollflächige Bühne für den Graphen, darüber schwebende Glas-Ebenen – Kopf oben links, Detailblatt rechts (Handy: unten), Skill-Leiste und Variantenschalter unten */
+:root{
+  --bg:#f5f5f7; --surface:#ffffff; --fg:#1d1d1f; --fg-2:#6e6e73; --fg-3:#aeaeb2;
+  --line:rgba(29,29,31,.12); --mat:rgba(255,255,255,.76); --mat-edge:rgba(255,255,255,.8);
+  --shadow:0 14px 44px rgba(20,24,40,.14), 0 2px 6px rgba(20,24,40,.06);
+  --c-studium:#007aff; --c-job:#ff9500; --c-projekte:#34c759; --c-hobbys:#ff2d55; --c-skill:#5e5ce6; --c-root:#1d1d1f;
+  --on-color:#ffffff;
+  --pill-bg:rgba(29,29,31,.92); --pill-fg:#f5f5f7; --pill-dim:rgba(245,245,247,.55);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-round:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c0c0e; --surface:#1c1c1e; --fg:#f5f5f7; --fg-2:#a1a1a6; --fg-3:#636366;
+    --line:rgba(245,245,247,.13); --mat:rgba(30,30,32,.72); --mat-edge:rgba(255,255,255,.08);
+    --shadow:0 14px 44px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.3);
+    --c-studium:#0a84ff; --c-job:#ff9f0a; --c-projekte:#30d158; --c-hobbys:#ff375f; --c-skill:#7d7aff; --c-root:#f5f5f7;
+    --pill-bg:rgba(245,245,247,.94); --pill-fg:#1d1d1f; --pill-dim:rgba(29,29,31,.5);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c0c0e; --surface:#1c1c1e; --fg:#f5f5f7; --fg-2:#a1a1a6; --fg-3:#636366;
+  --line:rgba(245,245,247,.13); --mat:rgba(30,30,32,.72); --mat-edge:rgba(255,255,255,.08);
+  --shadow:0 14px 44px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.3);
+  --c-studium:#0a84ff; --c-job:#ff9f0a; --c-projekte:#30d158; --c-hobbys:#ff375f; --c-skill:#7d7aff; --c-root:#f5f5f7;
+  --pill-bg:rgba(245,245,247,.94); --pill-fg:#1d1d1f; --pill-dim:rgba(29,29,31,.5);
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg); color:var(--fg); font:15px/1.45 var(--font); overflow:hidden; -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent}
+button{font:inherit; color:inherit}
+button:focus-visible,.sk:focus-visible{outline:2px solid var(--c-studium); outline-offset:2px}
+
+#stage{position:fixed; inset:0}
+/* Kanteneffekt statt Trennlinie: der Kopf bleibt über dichtem Inhalt lesbar */
+body::before{content:""; position:fixed; z-index:15; inset:0 0 auto; height:var(--fade-h, 190px); background:linear-gradient(var(--bg) 62%, color-mix(in srgb, var(--bg) 0%, transparent)); pointer-events:none}
+.stage-svg{display:block; width:100%; height:100%; touch-action:none; user-select:none; -webkit-user-select:none}
+
+/* ---------- Kopf ---------- */
+.top{position:fixed; z-index:20; top:calc(14px + env(safe-area-inset-top,0px)); left:max(16px, env(safe-area-inset-left,0px)); right:max(16px, env(safe-area-inset-right,0px)); display:flex; flex-direction:column; gap:8px; pointer-events:none}
+.brand{display:flex; align-items:center; gap:10px}
+.mono{width:34px; height:34px; border-radius:50%; display:grid; place-items:center; background:var(--fg); color:var(--bg); font:700 13px var(--font-round); letter-spacing:.02em}
+.brand b{display:block; font:650 17px/1.15 var(--font-display); letter-spacing:-.01em}
+.brand span{display:block; font-size:12px; color:var(--fg-2); letter-spacing:.01em}
+.crumbs{display:flex; flex-wrap:wrap; align-items:center; gap:2px; pointer-events:auto; max-width:min(560px, 100%)}
+.crumb{border:0; background:none; padding:4px 8px; border-radius:8px; font-size:13.5px; color:var(--c-studium); cursor:pointer}
+.crumb:hover{background:var(--line)}
+.crumb.cur{color:var(--fg); font-weight:600; cursor:default; background:none}
+.crumbs .sep{color:var(--fg-3); font-size:13px}
+.hint{margin:0; max-width:52ch; font-size:13px; line-height:1.4; color:var(--fg-2); text-wrap:pretty}
+.legend{display:flex; flex-wrap:wrap; gap:12px; font-size:12px; color:var(--fg-2)}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.d{width:10px; height:10px; border-radius:50%; display:inline-block; box-sizing:border-box}
+.d.done{background:var(--fg-2)}
+.d.now{border:2px solid var(--fg-2); background:color-mix(in srgb, var(--fg-2) 30%, transparent)}
+.d.plan{border:1.5px dashed var(--fg-2)}
+@media (max-width:719px){ .hint{font-size:12.5px} .brand span{display:none} }
+
+/* ---------- Variantenschalter (nicht Teil des Designs) ---------- */
+.switcher{position:fixed; z-index:40; left:50%; bottom:calc(14px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); display:flex; align-items:center; gap:2px; padding:5px; border-radius:999px; background:var(--pill-bg); color:var(--pill-fg); box-shadow:0 10px 30px rgba(0,0,0,.28)}
+.switcher button{width:36px; height:36px; border:0; border-radius:50%; background:transparent; cursor:pointer; display:grid; place-items:center}
+.switcher button:hover{background:color-mix(in srgb, var(--pill-fg) 14%, transparent)}
+.switcher button:active{transform:scale(.94)}
+.switcher svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round}
+.sw-label{min-width:150px; text-align:center; display:flex; flex-direction:column; line-height:1.15; padding-inline:4px}
+.sw-tag{font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--pill-dim)}
+#sw-name{font-weight:650; font-size:14px}
+
+/* ---------- Detailblatt ---------- */
+.sheet{position:fixed; z-index:30; top:calc(16px + env(safe-area-inset-top,0px)); right:max(16px, env(safe-area-inset-right,0px)); bottom:calc(76px + env(safe-area-inset-bottom,0px)); width:360px; box-sizing:border-box; overflow:auto; overscroll-behavior:contain; padding:22px 20px 20px; border-radius:24px; background:var(--mat); -webkit-backdrop-filter:blur(26px) saturate(180%); backdrop-filter:blur(26px) saturate(180%); border:1px solid var(--mat-edge); box-shadow:var(--shadow); opacity:0; transform:translateX(28px) scale(.985); pointer-events:none; transition:opacity .22s ease, transform .38s cubic-bezier(.2,.9,.25,1)}
+.sheet.open{opacity:1; transform:none; pointer-events:auto}
+body.has-skillbar .sheet{bottom:calc(124px + env(safe-area-inset-bottom,0px))}
+@media (max-width:719px){
+  .sheet{top:auto; left:max(8px, env(safe-area-inset-left,0px)); right:max(8px, env(safe-area-inset-right,0px)); width:auto; bottom:calc(66px + env(safe-area-inset-bottom,0px)); max-height:56vh; transform:translateY(32px)}
+  body.has-skillbar .sheet{bottom:calc(112px + env(safe-area-inset-bottom,0px))}
+}
+.sheet .x{position:absolute; top:14px; right:14px; width:30px; height:30px; border-radius:50%; border:0; background:var(--line); cursor:pointer; display:grid; place-items:center}
+.sheet .x svg{width:12px; height:12px; stroke:var(--fg-2); stroke-width:2.4; stroke-linecap:round}
+.eyebrow{display:flex; align-items:center; gap:7px; font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--fg-2)}
+.eyebrow i{width:9px; height:9px; border-radius:50%; background:var(--c)}
+.sheet h2{margin:8px 40px 2px 0; font:700 26px/1.12 var(--font-display); letter-spacing:-.022em; text-wrap:balance}
+.meta{margin:0 0 10px; font-size:13.5px; color:var(--fg-2); font-variant-numeric:tabular-nums}
+.status{display:inline-flex; align-items:center; gap:7px; padding:4px 10px 4px 8px; border-radius:999px; font-size:12.5px; font-weight:600; background:color-mix(in srgb, var(--c) 14%, transparent); color:var(--fg)}
+.status::before{content:""; width:9px; height:9px; border-radius:50%; box-sizing:border-box}
+.status.done::before{background:var(--c)}
+.status.now::before{border:2px solid var(--c); background:color-mix(in srgb, var(--c) 30%, transparent)}
+.status.plan::before{border:1.5px dashed var(--c)}
+.tags{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
+.tags span{font-size:12.5px; padding:4px 9px; border-radius:8px; background:var(--line); color:var(--fg)}
+.sheet section{margin-top:18px}
+.sheet h3{margin:0 0 6px; font-size:12px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-2); display:flex; align-items:center; gap:8px}
+.sheet h3 em{font-style:normal; letter-spacing:.02em; text-transform:none; font-weight:500; font-size:11px; padding:1px 6px; border-radius:6px; border:1px dashed var(--fg-3); color:var(--fg-2)}
+.sheet p{margin:0; font-size:15px; line-height:1.5; max-width:60ch}
+.sheet p.lead{margin-top:12px; color:var(--fg-2); font-size:14px}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{border:1px solid color-mix(in srgb, var(--c-skill) 35%, transparent); background:color-mix(in srgb, var(--c-skill) 10%, transparent); color:var(--fg); border-radius:999px; padding:5px 11px; font-size:13px; cursor:pointer}
+.chip:hover{background:color-mix(in srgb, var(--c-skill) 18%, transparent)}
+.chip:active{transform:scale(.97)}
+.rel{display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:0; background:none; padding:8px 6px; margin:0 -6px; border-radius:10px; cursor:pointer}
+.rel:hover{background:var(--line)}
+.rel .v{flex:none; width:11px; height:11px; border-radius:50%; box-sizing:border-box; background:var(--c)}
+.rel .v.now{background:color-mix(in srgb, var(--c) 30%, transparent); border:2px solid var(--c)}
+.rel .v.plan{background:transparent; border:1.5px dashed var(--c)}
+.rel span{flex:1; min-width:0; font-size:14.5px}
+.rel small{color:var(--fg-2); font-size:12px; white-space:nowrap}
+.model{display:flex; align-items:center; gap:14px; margin-top:18px; padding:14px; border-radius:16px; background:color-mix(in srgb, var(--c) 8%, var(--surface)); border:1px solid color-mix(in srgb, var(--c) 22%, transparent)}
+.cube{flex:none; width:46px; height:46px; border-radius:12px; background:conic-gradient(from 200deg, color-mix(in srgb, var(--c) 55%, #fff) 0 33%, var(--c) 0 66%, color-mix(in srgb, var(--c) 62%, #000) 0)}
+.model b{display:block; font-size:14px}
+.model span{display:block; font-size:13.5px}
+.model small{display:block; font-size:12px; color:var(--fg-2); margin-top:2px}
+.actions{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap}
+.actions button{flex:1 1 auto; border:1px solid var(--line); background:var(--surface); border-radius:12px; padding:9px 12px; font-size:13.5px; font-weight:600; opacity:.55; cursor:not-allowed}
+.note{margin-top:10px !important; font-size:13px !important; color:var(--fg-2)}
+.taste{margin:0; padding:0; list-style:none; display:grid; gap:6px}
+.taste li{font-size:14px; padding:9px 12px; border-radius:12px; background:var(--line)}
+.photo{margin-top:16px; aspect-ratio:4/3; max-width:100%; border-radius:16px; display:grid; place-content:center; justify-items:center; gap:6px; color:var(--fg-2); font-size:12.5px; background:color-mix(in srgb, var(--c) 10%, var(--surface)); border:1px dashed color-mix(in srgb, var(--c) 40%, transparent)}
+.photo svg{width:54px; height:54px; fill:color-mix(in srgb, var(--c) 45%, var(--fg-3))}
+
+/* ---------- Skill-Leiste ---------- */
+.skillbar{position:fixed; z-index:25; left:0; right:0; bottom:calc(66px + env(safe-area-inset-bottom,0px)); display:flex; gap:8px; overflow-x:auto; padding-block:8px; padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px)); scrollbar-width:none; -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%); mask-image:linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%)}
+.skillbar::-webkit-scrollbar{display:none}
+.sk{flex:none; display:inline-flex; align-items:center; gap:7px; height:34px; padding:0 12px; border-radius:999px; border:1px solid var(--line); background:var(--mat); -webkit-backdrop-filter:blur(20px) saturate(180%); backdrop-filter:blur(20px) saturate(180%); font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap}
+.sk .n{color:var(--fg-2); font-size:12px; font-variant-numeric:tabular-nums}
+.sk .code{display:none}
+.sk.dot::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--c-skill)}
+.sk.metro{padding-left:5px}
+.sk.metro .code{display:inline-grid; place-items:center; min-width:24px; height:24px; padding:0 5px; box-sizing:border-box; border-radius:7px; background:var(--c-skill); color:var(--on-color); font:700 10.5px var(--font-round); letter-spacing:.03em}
+.sk.on{background:var(--c-skill); color:var(--on-color); border-color:transparent}
+.sk.on .n{color:inherit; opacity:.8}
+.sk.dot.on::before{background:var(--on-color)}
+.sk.metro.on .code{background:var(--on-color); color:var(--c-skill)}
+.sk:active{transform:scale(.97)}
+
+/* ---------- A · Netz ---------- */
+.nd{cursor:grab; transition:opacity .2s}
+.nd.dim{opacity:.16 !important}
+.ln{fill:none; transition:opacity .2s}
+.ln.dim{opacity:.05 !important}
+.lbl{fill:var(--fg); font-size:12px; text-anchor:middle; paint-order:stroke; stroke:var(--bg); stroke-width:4px; stroke-linejoin:round; pointer-events:none}
+.lbl.g{font-size:13px; font-weight:600}
+.lbl.f{font-size:15px; font-weight:700}
+.lbl.s{font-size:10.5px; fill:var(--fg-2)}
+.ini{fill:var(--bg); font:700 16px var(--font-round); text-anchor:middle; dominant-baseline:central; pointer-events:none}
+.nd.sel .c{stroke:var(--fg) !important; stroke-width:3px !important; stroke-dasharray:none !important}
+
+/* ---------- B · Blasen ---------- */
+.bl{cursor:pointer; transition:opacity .25s}
+.bl.dim{opacity:.16}
+.bl.out{opacity:.14}
+.bl.hit{stroke:var(--c-skill) !important; stroke-width:3px !important; stroke-dasharray:none !important}
+.bl.sel{stroke:var(--fg) !important; stroke-width:3px !important; stroke-dasharray:none !important}
+.bl-t{fill:var(--fg); text-anchor:middle; dominant-baseline:central; paint-order:stroke; stroke:var(--surface); stroke-width:3px; stroke-linejoin:round}
+.bl-t.on{fill:var(--on-color); stroke:none}
+
+/* ---------- C · Linien ---------- */
+.trk path{fill:none; stroke-width:6px; stroke-linecap:round; stroke-linejoin:round}
+.trk .base{stroke-dasharray:.5 11; stroke-opacity:.6}
+.route{fill:none; stroke:var(--c-skill); stroke-width:5px; stroke-linecap:round; stroke-linejoin:round; opacity:.92}
+.st{cursor:pointer; transition:opacity .2s}
+.st.dim{opacity:.3}
+.st-t{fill:var(--fg); font-size:12px; paint-order:stroke; stroke:var(--bg); stroke-width:4px; stroke-linejoin:round}
+.st-t.group{font-weight:650; font-size:12.5px}
+.st-t.module{font-size:11.5px}
+.band-t{fill:var(--fg-2); font-size:11px; font-weight:600; letter-spacing:.02em}
+.xfer{fill:var(--fg-2); font-size:11px; font-style:italic}
+.today{stroke:var(--fg); stroke-width:1; stroke-dasharray:3 4; opacity:.45}
+.today-t{fill:var(--fg); font-size:11px; font-weight:700; text-anchor:middle; letter-spacing:.04em}
+.yr line{stroke:var(--fg-3)}
+.yr text{fill:var(--fg-2); font-size:11px; text-anchor:middle; font-variant-numeric:tabular-nums}
+.axis{stroke:var(--line)}
+.badge .code{fill:var(--on-color); font:700 12px var(--font-round); text-anchor:middle; dominant-baseline:central}
+.badge .name{fill:var(--fg); font-size:13px; font-weight:600; dominant-baseline:central}
+
+@media (prefers-reduced-motion: reduce){
+  .sheet{transition:opacity .2s ease; transform:none !important}
+}
+@media (prefers-reduced-transparency: reduce){
+  .sheet,.sk{background:var(--surface); -webkit-backdrop-filter:none; backdrop-filter:none}
+}
+</style>
+
+<div id="stage"></div>
+
+<header class="top">
+  <div class="brand"><span class="mono" aria-hidden="true">DS</span><div><b>David Staufer</b><span>Lebensgraph · Design-Prototyp</span></div></div>
+  <nav class="crumbs" id="crumbs" aria-label="Pfad"></nav>
+  <p class="hint" id="hint"></p>
+  <div class="legend" aria-label="Legende"><span><i class="d done"></i>bestanden / online</span><span><i class="d now"></i>läuft / in Arbeit</span><span><i class="d plan"></i>geplant / nur lokal</span></div>
+</header>
+
+<aside class="sheet" id="sheet" aria-live="polite"></aside>
+<div class="skillbar" id="skillbar" hidden></div>
+
+<nav class="switcher" aria-label="Prototyp-Varianten">
+  <button id="sw-prev" aria-label="Vorherige Variante"><svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg></button>
+  <div class="sw-label"><span class="sw-tag">Prototyp · Variante</span><span id="sw-name">A · Netz</span></div>
+  <button id="sw-next" aria-label="Nächste Variante"><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></button>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+(() => {
+'use strict';
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const narrow = () => window.innerWidth < 720;
+const headerBottom = () => $('.top').getBoundingClientRect().bottom;
+
+/* =====================================================================
+   DATEN  (Planung 20.11.2026 – Texte sind Entwürfe)
+   ===================================================================== */
+const SKILLS = [
+  ['python','Python','PY'],['numpy','NumPy','NP'],['pytorch','PyTorch','PT'],['sklearn','scikit-learn','SK'],['xgboost','XGBoost','XG'],
+  ['swift','Swift & SwiftUI','SW'],['ts','TypeScript & React','TS'],['java','Java','JV'],['sql','SQL','SQL'],['git','Git','GIT'],
+  ['linalg','Lineare Algebra','LA'],['analysis','Analysis & Optimierung','AN'],['stats','Statistik','ST'],['ml','Maschinelles Lernen','ML'],
+  ['dl','Deep Learning','DL'],['algo','Algorithmen','AL'],['testing','Software-Testing','QA'],['netze','Rechnernetze','NET'],['datenq','Datenqualität','DQ']
+];
+const mod = (id, name, short, ects, status, tags, text, skills, extra) => Object.assign({id, name, short, kind:'module', ects, status, tags, text, skills}, extra || {});
+
+const TREE = {id:'david', name:'David Staufer', kind:'root', sub:'KI & Data Science · Würzburg', children:[
+  {id:'studium', name:'Studium', kind:'area', area:'studium', sub:'JMU Würzburg', children:[
+    {id:'wi', name:'Wirtschaftsinformatik', short:'WI', kind:'group', sub:'2024–25 · angerechnet', t:[2024.79, 2025.79], children:[
+      mod('m-gads','Grundlagen Algorithmen & Datenstrukturen','GADS',10,'bestanden',['Sortieren','Bäume & Graphen','Laufzeitanalyse'],'Probleme in Algorithmen zerlegen und abschätzen, wie lange sie laufen.',['algo','java']),
+      mod('m-swtwi','Softwaretechnik','Softwaretechnik',10,'bestanden',['UML','Entwurfsmuster','Teamprojekt'],'Software im Team planen, bevor die erste Zeile Code entsteht.',['java','testing','git']),
+      mod('m-diff','Differentialrechnung','Differentialrechnung',5,'bestanden',['Ableitungen','Extremwerte','Optimierung'],'Das Werkzeug, auf dem später jeder Gradientenabstieg aufbaut.',['analysis']),
+      mod('m-lawi','Lineare Algebra','Lineare Algebra',5,'bestanden',['Matrizen','Gleichungssysteme','Determinanten'],'Rechnen mit Matrizen, der Grundsprache von Daten.',['linalg']),
+      mod('m-statwi','Statistik','Statistik',5,'bestanden',['Verteilungen','Schätzer','Tests'],'Unsicherheit in Zahlen fassen.',['stats']),
+      mod('m-ebiz','E-Business','E-Business',5,'bestanden',['Geschäftsmodelle','Plattformen','Online-Handel'],'Wie digitale Geschäftsmodelle funktionieren und Geld verdienen.',[])
+    ]},
+    {id:'kids', name:'KI & Data Science', short:'KIDS', kind:'group', sub:'B.Sc. seit 10/2025', children:[
+      {id:'s1', name:'1. Semester', short:'1. Sem.', kind:'group', sub:'WS 2025/26', t:[2025.79, 2026.21], children:[
+        mod('m-gdp','Grundlagen der Programmierung','GdP',5,'bestanden',['Python','Funktionen','Rekursion'],'Sauber programmieren von Grund auf.',['python','algo']),
+        mod('m-akids1','Algorithmen, KI und Data Science 1','AKIDS 1',10,'bestanden',['Suche','Graphalgorithmen','Komplexität'],'Algorithmen als Fundament für KI.',['algo','python','ml']),
+        mod('m-mk1','Mathematik für KIDS 1','Mathe 1',10,'bestanden',['Analysis','Lineare Algebra','Beweise'],'Mathematisch sauber argumentieren.',['analysis','linalg']),
+        mod('m-pp','Programmierpraktikum KIDS','Programmierpraktikum',10,'geplant',['Teamprojekt','Git','Größere Codebasis'],'Ein größeres Programm im Team bauen, mit allem, was dazugehört.',['python','git'])
+      ]},
+      {id:'s2', name:'2. Semester', short:'2. Sem.', kind:'group', sub:'SS 2026', t:[2026.29, 2026.71], children:[
+        mod('m-akids2','Algorithmen, KI und Data Science 2','AKIDS 2',10,'bestanden',['Dynamische Programmierung','Optimierung','Lernverfahren'],'Vom klassischen Algorithmus zu Verfahren, die aus Daten lernen.',['algo','ml','python']),
+        mod('m-mk2','Mathematik für KIDS 2','Mathe 2',10,'bestanden',['Mehrdimensionale Analysis','Eigenwerte','Wahrscheinlichkeit'],'Die Mathematik, mit der man Modelle wirklich versteht.',['analysis','linalg','stats']),
+        mod('m-dsml','Data Science und Maschinelles Lernen','DSML',5,'bestanden',['Regression','Klassifikation','Evaluation'],'Vom Datensatz zum ersten Modell, und ehrlich messen, ob es taugt.',['ml','sklearn','stats','python']),
+        mod('m-swt','Softwaretechnik für KIDS','Softwaretechnik',5,'bestanden',['Anforderungen','Tests','Code-Review'],'Code so schreiben, dass andere damit weiterarbeiten können.',['testing','git'])
+      ]},
+      {id:'s3', name:'3. Semester', short:'3. Sem.', kind:'group', sub:'WS 2026/27', t:[2026.79, 2027.21], children:[
+        mod('m-dl','Deep Learning','Deep Learning',5,'läuft',['Backpropagation','CNNs','RNNs & LSTMs','PyTorch'],'Neuronale Netze von Hand bauen: Im Lab entsteht ein eigenes kleines Framework.',['dl','pytorch','numpy','python'],{links:['p-dllab'], taste:['Deep Learning 3D']}),
+        mod('m-toml','Theory of Machine Learning','Theory of ML',5,'läuft',['Lerntheorie','Generalisierung','Kernel-Methoden'],'Warum Lernen aus Daten überhaupt funktioniert, mathematisch begründet.',['ml','stats']),
+        mod('m-m3','Mathematical Foundations of Data Science 1','Mathe 3',null,'läuft',['Lineare Regression','Pseudoinverse','Hypothesentests'],'Die Statistik hinter Regression und Tests.',['stats','linalg'],{taste:['Der p-Wert','Die Pseudoinverse']}),
+        mod('m-rui','Rechnernetze und Informationsübertragung','Rechnernetze',10,'läuft',['Protokolle','TCP/IP','Informationstheorie'],'Wie Daten zuverlässig von A nach B kommen.',['netze']),
+        mod('m-db','Datenbanken','Datenbanken',5,'geplant',['SQL','Relationenmodell','Transaktionen'],'Daten sauber modellieren und abfragen.',['sql']),
+        mod('m-lab1','KI und Data Science Lab 1','Lab 1',10,'geplant',['Projektarbeit','KI-Anwendung','Team'],'Ein echtes KI-Projekt im Team, von der Idee bis zur Auswertung.',['python','ml'])
+      ]},
+      {id:'s4', name:'4. Semester', short:'4. Sem.', kind:'group', sub:'SS 2027', t:[2027.29, 2027.71], children:[
+        mod('m-thi','Theoretische Informatik','Theoretische Informatik',null,'geplant',['Automaten','Formale Sprachen','Berechenbarkeit'],'Was Computer grundsätzlich können und was nicht.',['algo']),
+        mod('m-ra','Rechenanlagen','Rechenanlagen',null,'geplant',['Rechnerarchitektur','Assembler','Speicher'],'Was unter dem Code in der Hardware passiert.',[]),
+        mod('m-bs','Betriebssysteme','Betriebssysteme',null,'geplant',['Prozesse','Speicherverwaltung','Nebenläufigkeit'],'Wie ein Betriebssystem Programme organisiert.',[]),
+        mod('m-lab2','KI und Data Science Lab 2','Lab 2',null,'geplant',['Projektarbeit','Team'],'Das zweite große Teamprojekt.',['ml'])
+      ]},
+      {id:'s5', name:'5. Semester', short:'5. Sem.', kind:'group', sub:'WS 2027/28', t:[2027.79, 2028.21], children:[
+        mod('m-num','Numerik 1','Numerik',null,'geplant',['Fehleranalyse','Gleichungssysteme','Interpolation'],'Rechnen mit endlicher Genauigkeit, ohne dass Ergebnisse kippen.',['linalg','analysis']),
+        mod('m-fp','Funktionale Programmierung','Funktionale Progr.',null,'geplant',['Funktionen höherer Ordnung','Typsysteme','Rekursion'],'Ein anderer Blick aufs Programmieren.',[]),
+        mod('m-lab3','KI und Data Science Lab 3','Lab 3',null,'geplant',['Projektarbeit','Team'],'Das dritte Teamprojekt.',['ml'])
+      ]},
+      {id:'s67', name:'6.–7. Semester', short:'6.–7. Sem.', kind:'group', sub:'SS 2028 – WS 2028/29', t:[2028.29, 2029.21], children:[
+        mod('m-mci','Einführung in die Mensch-Computer-Interaktion','MCI',null,'geplant',['Usability','Nutzerstudien','Prototyping'],'Software für Menschen statt für Compiler.',[]),
+        mod('m-ba','Bachelorarbeit','Bachelorarbeit',null,'geplant',['Thema folgt'],'Thema folgt.',['ml'])
+      ]}
+    ]}
+  ]},
+  {id:'arbeit', name:'Arbeit', kind:'area', area:'job', sub:'Werkstudent', children:[
+    {id:'j-tech11', kind:'job', name:'tech11', status:'aktuell', t:[2026.33, null], sub:'Werkstudent Softwaretest · seit 05/2026', tags:['QA','Testdesign','Bug-Tracking','Datenvalidierung'], text:'Testfälle entwerfen, Fehler nachvollziehbar dokumentieren und Daten auf Plausibilität prüfen.', skills:['testing','datenq']},
+    {id:'j-erste', kind:'job', name:'Erste Arbeitserfahrung', short:'Erste Erfahrung', status:'frueher', t:[2022.5, 2023.6], sub:'Praktikum & Sekretariat · 2022–23', tags:['Praktikum Industrie','Sekretariat Klinik'], text:'Zuverlässig im Arbeitsalltag funktionieren, bevor es um Code ging.', skills:[]}
+  ]},
+  {id:'projekte', name:'Projekte', kind:'area', area:'projekte', sub:'eigene Projekte', children:[
+    {id:'p-bundesliga', kind:'project', name:'Bundesliga Predictor', mini:'Bundesliga', status:'v1', t:2026.21, sub:'Python · XGBoost · 11 Saisons', tags:['Feature Engineering','XGBoost','≈ 48 % Trefferquote'], text:'Sagt Ausgänge von Bundesliga-Spielen vorher. Geht als erstes Projekt online.', skills:['python','xgboost','ml','stats'], model:'Klassisches ML · Entscheidungsbaum-Wald'},
+    {id:'p-immo', kind:'project', name:'Würzburg Preisvorhersage', short:'Würzburg Immo ML', mini:'Immo ML', status:'arbeit', t:2026.21, sub:'Python · scikit-learn', tags:['Regression','R² ≈ 0,88','Feature Engineering'], text:'Schätzt Wohnungspreise in Würzburg.', skills:['python','sklearn','ml','stats'], model:'Klassisches ML · Regressionsfläche'},
+    {id:'p-party', kind:'project', name:'Party Game', status:'arbeit', t:2026.77, sub:'TypeScript · React · WebSocket', tags:['Multiplayer','Minigames','Docker'], text:'Multiplayer-Partyspiel im Browser mit Minigames.', skills:['ts','git'], model:'Software-Architektur in 3D'},
+    {id:'p-news', kind:'project', name:'News Trading AI', mini:'News AI', status:'arbeit', t:2026.78, sub:'Python · GDELT · Alpaca', tags:['Sentiment','Zeitreihen','Backtesting'], text:'Haben Finanznachrichten Vorhersagekraft für Aktienrenditen?', skills:['python','stats','ml'], model:'Klassisches ML · Pipeline'},
+    {id:'p-kompass', kind:'project', name:'Kompass', status:'lokal', t:2026.86, sub:'SwiftUI · Mac & iPhone', tags:['Lernplanung','Kalender','Zeiterfassung','KI-Assistent'], text:'Meine Lern- und Kalender-App. Dient beim Bau der Seite als Testprojekt und bleibt vorerst lokal.', skills:['swift','git'], model:'App · drehbares 3D-iPhone'},
+    {id:'p-dllab', kind:'project', name:'Eigenes DL-Framework', short:'DL-Framework', mini:'DL-Lab', status:'arbeit', t:2026.88, sub:'Uni-Lab Deep Learning · Python · NumPy', tags:['Layer','Backward Pass','Optimierer'], text:'Im DL-Lab entsteht Schritt für Schritt eine eigene kleine Bibliothek für neuronale Netze.', skills:['python','numpy','dl','linalg'], model:'Neuronales Netz in 3D', lab:true}
+  ]},
+  {id:'hobbys', name:'Hobbys', kind:'area', area:'hobbys', sub:'Freizeit', children:[
+    {id:'h-fussball', kind:'hobby', name:'Fußball', status:'hobby', tags:['Kicktipp','Bundesliga'], text:'Platzhalter, dein eigener Text folgt.', links:['p-bundesliga'], model:'Motivation in 3D · kommt in Version 1'},
+    {id:'h-maerkte', kind:'hobby', name:'Märkte & Daten', status:'hobby', tags:['Aktien','Nachrichten'], text:'Platzhalter, dein eigener Text folgt.', links:['p-news'], model:'Motivation in 3D · folgt später'},
+    {id:'h-paddle', kind:'hobby', name:'Paddle Tennis', status:'hobby', tags:[], text:'Platzhalter, dein eigener Text folgt.', model:'Motivation in 3D · folgt später'},
+    {id:'h-ski', kind:'hobby', name:'Skifahren', status:'hobby', tags:[], text:'Platzhalter, dein eigener Text folgt.', model:'Motivation in 3D · folgt später'}
+  ]}
+]};
+
+const STATUS = {
+  'bestanden':{vis:'done', label:'Bestanden'}, 'läuft':{vis:'now', label:'Läuft gerade'}, 'geplant':{vis:'plan', label:'Geplant'},
+  'v1':{vis:'done', label:'Online ab Version 1'}, 'arbeit':{vis:'now', label:'In Arbeit · noch nicht online'}, 'lokal':{vis:'plan', label:'Nur lokal · Testprojekt'},
+  'aktuell':{vis:'now', label:'Aktuell'}, 'frueher':{vis:'done', label:'Abgeschlossen'}, 'hobby':{vis:'done', label:null}
+};
+const AREA_LABEL = {studium:'Studium', job:'Arbeit', projekte:'Projekte', hobbys:'Hobbys', skill:'Skill'};
+
+/* ---------- Aufbereitung ---------- */
+const byId = new Map(), leaves = [];
+(function walk(n, p, depth){
+  n.parent = p; n.depth = depth; if (p && !n.area) n.area = p.area; byId.set(n.id, n);
+  if (n.children && n.children.length) n.children.forEach(c => walk(c, n, depth + 1)); else if (n.kind !== 'root') leaves.push(n);
+})(TREE, null, 0);
+const skillMap = new Map(SKILLS.map(([id, name, code]) => [id, {id, name, code, kind:'skill', area:'skill', evidence:[]}]));
+leaves.forEach(l => (l.skills || []).forEach(s => skillMap.get(s).evidence.push(l)));
+
+const isLeaf = n => !n.children || !n.children.length;
+const color = n => n.kind === 'root' ? 'var(--c-root)' : n.kind === 'skill' ? 'var(--c-skill)' : `var(--c-${n.area})`;
+const visOf = n => (STATUS[n.status] || {}).vis || 'done';
+const pathTo = n => { const p = []; while (n) { p.unshift(n); n = n.parent; } return p; };
+const leavesOf = n => isLeaf(n) ? [n] : n.children.flatMap(leavesOf);
+const leafCount = n => leavesOf(n).length;
+const groupVis = n => { const vs = leavesOf(n).map(visOf); if (vs.some(v => v === 'now')) return 'now'; if (vs.some(v => v === 'done')) return 'done'; return 'plan'; };
+const _ds = new Map();
+function descSkills(n){
+  if (_ds.has(n.id)) return _ds.get(n.id);
+  const s = new Set();
+  if (isLeaf(n)) (n.skills || []).forEach(x => s.add(x)); else n.children.forEach(c => descSkills(c).forEach(x => s.add(x)));
+  _ds.set(n.id, s); return s;
+}
+function relationsOf(n){
+  const out = new Map();
+  (n.links || []).forEach(id => { const r = byId.get(id); if (r) out.set(id, r); });
+  byId.forEach(o => { if ((o.links || []).includes(n.id)) out.set(o.id, o); });
+  return [...out.values()];
+}
+const joinDe = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' und ' + a[a.length - 1];
+
+/* =====================================================================
+   GEMEINSAME OBERFLÄCHE: Pfad, Detailblatt, Skill-Leiste, Schalter
+   ===================================================================== */
+const stage = $('#stage'), sheet = $('#sheet'), skillbar = $('#skillbar');
+let active = null, sheetNode = null;
+
+function setCrumbs(items){
+  const el = $('#crumbs'); el.innerHTML = '';
+  items.forEach((it, i) => {
+    if (i) el.insertAdjacentHTML('beforeend', '<span class="sep" aria-hidden="true">›</span>');
+    const last = i === items.length - 1;
+    const b = document.createElement(last ? 'span' : 'button');
+    b.className = 'crumb' + (last ? ' cur' : ''); b.textContent = it.label;
+    if (!last && it.fn) b.addEventListener('click', it.fn);
+    el.appendChild(b);
+  });
+}
+
+const ICON_X = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>';
+const ICON_PERSON = '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="17" r="9"/><path d="M7 44c1.5-9.5 8.5-15 17-15s15.5 5.5 17 15z"/></svg>';
+const textLabel = n => {
+  if (n.kind === 'module') return {'bestanden':'Was ich mitnehme', 'läuft':'Was ich gerade lerne', 'geplant':'Darum geht’s'}[n.status];
+  if (n.kind === 'project') return 'Worum es geht';
+  if (n.kind === 'job') return n.status === 'aktuell' ? 'Was ich mache' : 'Was ich mitnehme';
+  if (n.kind === 'hobby') return 'Warum ich das mache';
+  return null;
+};
+const eyebrowOf = n => ({module:'Studium · Modul', project:'Projekt', job:'Arbeit', hobby:'Hobby', skill:'Skill'})[n.kind] || AREA_LABEL[n.area] || '';
+const metaOf = n => n.kind === 'module' ? [n.parent.name, n.parent.sub, n.ects ? n.ects + ' ECTS' : null].filter(Boolean).join(' · ') : (n.sub || '');
+const relSub = r => r.kind === 'module' ? (r.parent.short || r.parent.name) : (AREA_LABEL[r.area] || '');
+const relBtn = r => `<button class="rel" data-reveal="${r.id}" style="--c:${color(r)}"><i class="v ${visOf(r)}"></i><span>${esc(r.name)}</span><small>${esc(relSub(r))}</small></button>`;
+
+function skillEvidenceHTML(s){
+  const by = {}; s.evidence.forEach(e => (by[e.area] = by[e.area] || []).push(e));
+  const nm = {studium:['Modul','Modulen'], job:['Job','Jobs'], projekte:['Projekt','Projekten'], hobbys:['Hobby','Hobbys']};
+  const parts = Object.keys(nm).filter(a => by[a]).map(a => by[a].length + ' ' + nm[a][by[a].length === 1 ? 0 : 1]);
+  let h = `<p class="lead">Belegt in ${joinDe(parts)}.</p>`;
+  Object.keys(nm).forEach(a => { if (by[a]) h += `<section><h3>${AREA_LABEL[a]}</h3>${by[a].map(relBtn).join('')}</section>`; });
+  return h;
+}
+
+function openSheet(n){
+  sheetNode = n;
+  const c = color(n);
+  let h = `<button class="x" data-act="close" aria-label="Detail schließen">${ICON_X}</button>`;
+  h += `<div class="eyebrow" style="--c:${c}"><i></i>${esc(eyebrowOf(n))}</div><h2>${esc(n.name)}</h2>`;
+  const meta = metaOf(n); if (meta) h += `<p class="meta">${esc(meta)}</p>`;
+  const st = STATUS[n.status]; if (st && st.label) h += `<span class="status ${st.vis}" style="--c:${c}">${esc(st.label)}</span>`;
+  if (n.tags && n.tags.length) h += `<div class="tags">${n.tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>`;
+  if (n.kind === 'hobby') h += `<div class="photo" style="--c:${c}">${ICON_PERSON}<span>Foto folgt</span></div>`;
+  const tl = textLabel(n); if (tl && n.text) h += `<section><h3>${esc(tl)} <em>Entwurf</em></h3><p>${esc(n.text)}</p></section>`;
+  if (n.model) h += `<div class="model" style="--c:${c}"><div class="cube" aria-hidden="true"></div><div><b>3D-Modell</b><span>${esc(n.model)}</span><small>Kommt im 3D-Prototyp</small></div></div>`;
+  if (n.kind === 'project') {
+    h += `<div class="actions"><button disabled>Code</button><button disabled>Git-Verlauf</button><button disabled>GitHub ↗</button></div>`;
+    if (n.lab) h += `<p class="note">Uni-Lab: Lösungscode bleibt privat, Code auf Anfrage.</p>`;
+  }
+  if (n.taste) h += `<section><h3>Kostprobe</h3><ul class="taste">${n.taste.map(t => `<li>Lernseite „${esc(t)}“</li>`).join('')}</ul></section>`;
+  if (n.skills && n.skills.length) h += `<section><h3>Skills</h3><div class="chips">${n.skills.map(s => `<button class="chip" data-skill="${s}">${esc(skillMap.get(s).name)}</button>`).join('')}</div></section>`;
+  if (n.kind === 'skill') h += skillEvidenceHTML(n);
+  const rels = n.kind === 'skill' ? [] : relationsOf(n);
+  if (rels.length) h += `<section><h3>Verbunden mit</h3>${rels.map(relBtn).join('')}</section>`;
+  sheet.innerHTML = h; sheet.scrollTop = 0; sheet.classList.add('open'); document.body.classList.add('sheet-open');
+  if (active && active.onSheet) active.onSheet();
+}
+function closeSheet(){
+  if (!sheetNode) return;
+  sheetNode = null; sheet.classList.remove('open'); document.body.classList.remove('sheet-open');
+  if (active && active.onSheet) active.onSheet();
+}
+sheet.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !active) return;
+  if (b.dataset.act === 'close') closeSheet();
+  else if (b.dataset.skill) active.skill(b.dataset.skill, false);
+  else if (b.dataset.reveal) active.reveal(b.dataset.reveal);
+});
+
+function buildSkillbar(style){
+  const list = [...skillMap.values()].filter(s => s.evidence.length).sort((a, b) => b.evidence.length - a.evidence.length);
+  skillbar.innerHTML = list.map(s => `<button class="sk ${style}" data-skill="${s.id}"><span class="code">${esc(s.code)}</span>${esc(s.name)}<span class="n">${s.evidence.length}</span></button>`).join('');
+  skillbar.hidden = false; document.body.classList.add('has-skillbar');
+}
+function markSkillbar(id){ skillbar.querySelectorAll('.sk').forEach(b => b.classList.toggle('on', b.dataset.skill === id)); }
+skillbar.addEventListener('click', e => { const b = e.target.closest('[data-skill]'); if (b && active) active.skill(b.dataset.skill, true); });
+
+/* =====================================================================
+   VARIANTE A · NETZ  – Kräfte-Graph wie Obsidian, Eintauchen per Klick
+   ===================================================================== */
+const Netz = (() => {
+  let svg, root, gL, gN, sim, zoomB, ro, tw, W = 0, H = 0;
+  let focus = TREE, lastTree = TREE, selected = null, links = [];
+  const pos = new Map(), shown = new Set();
+  const simNode = n => { let o = pos.get(n.id); if (!o) { o = {id:n.id, ref:n}; pos.set(n.id, o); } return o; };
+  const radius = (n, isF) => {
+    if (isF) return n.kind === 'root' ? 30 : 24;
+    if (n.kind === 'skill') return 4 + Math.min(5, Math.sqrt(n.evidence.length) * 1.3);
+    if (isLeaf(n)) return 9;
+    return Math.max(12, Math.min(26, 8 + Math.sqrt(leafCount(n)) * 3.4));
+  };
+  const fillN = n => {
+    if (n.kind === 'root') return 'var(--c-root)';
+    if (n.kind === 'skill') return 'var(--c-skill)';
+    if (!isLeaf(n)) return color(n);
+    const v = visOf(n); return v === 'done' ? color(n) : v === 'now' ? `color-mix(in srgb, ${color(n)} 35%, var(--surface))` : 'var(--surface)';
+  };
+  const ringed = n => n.kind !== 'skill' && n.kind !== 'root' && isLeaf(n) && visOf(n) !== 'done';
+
+  function measure(){ W = stage.clientWidth; H = stage.clientHeight; }
+  function recenter(anim){
+    const hb = headerBottom(), wide = !narrow() && sheetNode ? 380 : 0;
+    const t = d3.zoomIdentity.translate((W - wide) / 2, hb + (H - hb - 90) / 2).scale(Math.min(1, Math.max(0.55, (W - 32) / 640)));
+    (anim && !reduceMotion ? svg.transition('c').duration(520).ease(d3.easeCubicOut) : svg).call(zoomB.transform, t);
+  }
+  function tweenTo(o, x, y){
+    if (tw) tw.stop();
+    const x0 = o.fx, y0 = o.fy, dur = reduceMotion ? 0 : 650;
+    if (!dur) { o.fx = x; o.fy = y; return; }
+    tw = d3.timer(el => { const t = Math.min(1, el / dur), e = 1 - Math.pow(1 - t, 3); o.fx = x0 + (x - x0) * e; o.fy = y0 + (y - y0) * e; if (t === 1) tw.stop(); });
+  }
+  function ticked(){
+    gL.selectAll('line').attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    gN.selectAll('g.nd').attr('transform', d => `translate(${d.x},${d.y})`);
+  }
+  function paint(){
+    const s = gN.selectAll('g.nd:not(.exiting)');
+    s.select('circle.ha').attr('r', d => Math.max(d.r + 5, 15)).style('fill', 'transparent');
+    s.select('circle.c').attr('r', d => d.r).style('fill', d => fillN(d.ref)).style('fill-opacity', d => d.ref.kind === 'skill' ? 0.85 : 1)
+      .style('stroke', d => ringed(d.ref) ? color(d.ref) : 'var(--bg)').style('stroke-width', d => ringed(d.ref) ? 2 : 1.5)
+      .style('stroke-dasharray', d => ringed(d.ref) && visOf(d.ref) === 'plan' ? '3 2.5' : null);
+    s.select('text.lbl').text(d => d.ref.kind === 'root' ? 'David Staufer' : (d.ref.short || d.ref.name))
+      .attr('y', d => d.r + (d.focus ? 21 : 15)).attr('class', d => 'lbl ' + (d.focus ? 'f' : d.ref.kind === 'skill' ? 's' : isLeaf(d.ref) ? 'l' : 'g'));
+    s.select('text.ini').text(d => d.ref.kind === 'root' ? 'DS' : '');
+    s.classed('sel', d => !!selected && d.id === selected.id);
+  }
+  function highlight(set){
+    gN.selectAll('g.nd:not(.exiting)').classed('dim', d => !!set && !set.has(d.id));
+    gL.selectAll('line:not(.exiting)').classed('dim', l => !!set && !(set.has(l.source.id) && set.has(l.target.id)));
+  }
+  function neighbours(id){ const s = new Set([id]); links.forEach(l => { if (l.source.id === id) s.add(l.target.id); if (l.target.id === id) s.add(l.source.id); }); return s; }
+
+  function show(F, from){
+    focus = F; selected = null;
+    const isSkill = F.kind === 'skill';
+    const kids = isSkill ? F.evidence : (F.children || []);
+    const sk = new Set(); if (!isSkill) kids.forEach(k => descSkills(k).forEach(s => sk.add(s)));
+    const visible = [F, ...kids, ...[...sk].map(s => skillMap.get(s))];
+    const origin = simNode(from || F), ox = origin.x || 0, oy = origin.y || 0;
+    const nodes = visible.map(n => {
+      const o = simNode(n);
+      if (!shown.has(n.id) || o.x == null) { const a = Math.random() * Math.PI * 2; o.x = ox + Math.cos(a) * 10; o.y = oy + Math.sin(a) * 10; o.vx = 0; o.vy = 0; }
+      o.r = radius(n, n === F); o.focus = n === F; o.fx = null; o.fy = null; return o;
+    });
+    const fo = simNode(F); fo.fx = fo.x; fo.fy = fo.y; tweenTo(fo, 0, 0);
+    links = [];
+    kids.forEach(k => links.push({source:F.id, target:k.id, dist: isSkill ? 125 : 70 + radius(k, false) * 2.2, str:0.6, kind:'tree', c: isSkill ? 'var(--c-skill)' : color(k)}));
+    if (!isSkill) kids.forEach(k => descSkills(k).forEach(s => links.push({source:k.id, target:s, dist:90, str:0.06, kind:'skill'})));
+    sim.nodes(nodes); sim.force('link').links(links);
+    shown.clear(); visible.forEach(n => shown.add(n.id));
+
+    const key = d => (d.source.id || d.source) + '>' + (d.target.id || d.target);
+    const ls = gL.selectAll('line:not(.exiting)').data(links, key);
+    ls.exit().classed('exiting', true).classed('dim', false).interrupt().transition().duration(reduceMotion ? 0 : 240).style('opacity', 0).remove();
+    ls.enter().append('line').style('opacity', 0).transition().duration(reduceMotion ? 0 : 420).style('opacity', 1);
+    ls.interrupt().style('opacity', 1);
+    gL.selectAll('line:not(.exiting)').attr('class', d => 'ln ' + d.kind)
+      .style('stroke', d => d.kind === 'tree' ? d.c : 'var(--c-skill)').style('stroke-opacity', d => d.kind === 'tree' ? 0.4 : 0.16).style('stroke-width', d => d.kind === 'tree' ? 1.6 : 1.1);
+
+    const ns = gN.selectAll('g.nd:not(.exiting)').data(nodes, d => d.id);
+    ns.exit().classed('exiting', true).classed('dim', false).classed('sel', false).interrupt().transition().duration(reduceMotion ? 0 : 260).style('opacity', 0).remove();
+    const en = ns.enter().append('g').attr('class', 'nd').style('opacity', 0);
+    en.append('circle').attr('class', 'ha'); en.append('circle').attr('class', 'c'); en.append('text').attr('class', 'ini'); en.append('text').attr('class', 'lbl');
+    en.call(drag).on('click', (e, d) => { e.stopPropagation(); onClick(d.ref); })
+      .on('mouseenter', (e, d) => { if (!selected) highlight(neighbours(d.id)); })
+      .on('mouseleave', () => { if (!selected) highlight(null); });
+    en.transition().duration(reduceMotion ? 0 : 420).style('opacity', 1);
+    ns.interrupt().style('opacity', 1);
+    paint(); highlight(null);
+    sim.alpha(0.9).restart();
+    if (reduceMotion) { sim.stop(); for (let i = 0; i < 300; i++) sim.tick(); ticked(); }
+  }
+  const drag = d3.drag().clickDistance(6)
+    .on('start', (e, d) => { if (d.focus) return; if (!e.active) sim.alphaTarget(0.2).restart(); d.fx = d.x; d.fy = d.y; })
+    .on('drag', (e, d) => { if (d.focus) return; d.fx = e.x; d.fy = e.y; })
+    .on('end', (e, d) => { if (d.focus) return; if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; });
+
+  function crumbs(){
+    const base = focus.kind === 'skill' ? pathTo(lastTree) : pathTo(focus);
+    const items = base.map((n, i) => ({label: i === 0 ? 'Start' : (n.short || n.name), fn: () => { closeSheet(); go(n, null); }}));
+    if (focus.kind === 'skill') items.push({label: 'Skill · ' + focus.name});
+    setCrumbs(items);
+  }
+  function go(F, from){ show(F, from); crumbs(); recenter(true); }
+  function select(n){
+    selected = n; paint();
+    if (!n) { highlight(null); return; }
+    const set = new Set([n.id, focus.id]); (n.skills || []).forEach(s => set.add(s)); highlight(set);
+  }
+  function onClick(n){
+    if (n === focus) { api.back(); return; }
+    if (n.kind === 'skill') { api.skill(n.id); return; }
+    if (!isLeaf(n)) { closeSheet(); go(n, n); return; }
+    select(n); openSheet(n);
+  }
+  const api = {
+    key:'netz', name:'Netz',
+    hint:'Knoten antippen, um einzutauchen, die Mitte antippen für eine Ebene zurück. Die lila Punkte sind Skills: Antippen zeigt alle Belege. Knoten lassen sich ziehen.',
+    mount(){
+      svg = d3.select(stage).append('svg').attr('class', 'stage-svg').attr('aria-label', 'Lebensgraph als Netz');
+      root = svg.append('g'); gL = root.append('g'); gN = root.append('g');
+      zoomB = d3.zoom().scaleExtent([0.35, 3]).on('zoom', e => root.attr('transform', e.transform));
+      svg.call(zoomB).on('dblclick.zoom', null);
+      svg.on('click', e => { if (e.target === svg.node()) { select(null); closeSheet(); } });
+      sim = d3.forceSimulation().alphaDecay(0.035).velocityDecay(0.35)
+        .force('charge', d3.forceManyBody().strength(d => d.ref.kind === 'skill' ? -40 : -320).distanceMax(600))
+        .force('link', d3.forceLink().id(d => d.id).distance(l => l.dist).strength(l => l.str))
+        .force('collide', d3.forceCollide().radius(d => d.r + (d.ref.kind === 'skill' ? 10 : 22)).strength(0.9))
+        .force('x', d3.forceX(0).strength(0.04)).force('y', d3.forceY(0).strength(0.04))
+        .on('tick', ticked);
+      measure(); focus = TREE; lastTree = TREE; show(TREE, null); crumbs(); recenter(false);
+      ro = new ResizeObserver(() => { measure(); recenter(false); }); ro.observe(stage);
+    },
+    unmount(){ sim.stop(); if (tw) tw.stop(); ro.disconnect(); svg.interrupt('c'); pos.clear(); shown.clear(); },
+    reveal(id){
+      const n = byId.get(id); if (!n) { api.skill(id); return; }
+      if (!isLeaf(n)) { closeSheet(); go(n, null); return; }
+      if (!shown.has(n.id) || n === focus) go(n.parent, null);
+      select(n); openSheet(n);
+    },
+    skill(id){
+      const s = skillMap.get(id); if (focus.kind !== 'skill') lastTree = focus;
+      go(s, shown.has(id) ? s : null); openSheet(s);
+    },
+    back(){ closeSheet(); if (focus.kind === 'skill') go(lastTree, null); else if (focus.parent) go(focus.parent, null); },
+    onSheet(){ if (!sheetNode && selected) select(null); if (!narrow()) recenter(true); }
+  };
+  return api;
+})();
+
+/* =====================================================================
+   VARIANTE B · BLASEN  – verschachtelte Kreise, Hineinzoomen
+   ===================================================================== */
+const Blasen = (() => {
+  let svg, gC, gT, circles, labels, hier, HM, focus, view, ro, W = 0, H = 0, k = 1, cx = 0, cy = 0, diam = 1;
+  let sel = null, skillSel = null, hitCount = null;
+  const isAnc = (a, b) => { let p = b.parent; while (p) { if (p === a) return true; p = p.parent; } return false; };
+  function measure(){
+    W = stage.clientWidth; H = stage.clientHeight;
+    const top = headerBottom() + 8, bottom = 134, wide = !narrow() && sheetNode ? 380 : 0;
+    const aw = W - wide - 24, ah = H - top - bottom;
+    diam = Math.max(120, Math.min(aw, ah)); cx = (W - wide) / 2; cy = top + ah / 2;
+  }
+  function paintCircle(c, h){
+    const n = h.data, col = color(n);
+    if (h.depth === 0) { c.style('fill', 'color-mix(in srgb, var(--fg) 3%, var(--bg))').style('stroke', 'var(--line)').style('stroke-width', 1); return; }
+    if (h.children) { c.style('fill', `color-mix(in srgb, ${col} ${h.depth === 1 ? 9 : 16}%, var(--surface))`).style('stroke', `color-mix(in srgb, ${col} 32%, transparent)`).style('stroke-width', 1); return; }
+    const v = visOf(n);
+    c.style('fill', v === 'done' ? col : v === 'now' ? `color-mix(in srgb, ${col} 30%, var(--surface))` : 'var(--surface)')
+     .style('stroke', v === 'done' ? 'none' : col).style('stroke-width', v === 'done' ? 0 : 2).style('stroke-dasharray', v === 'plan' ? '4 3' : null);
+  }
+  function zoomTo(v){
+    view = v; k = diam / v[2];
+    circles.attr('transform', h => `translate(${(h.x - v[0]) * k + cx},${(h.y - v[1]) * k + cy})`).attr('r', h => h.r * k);
+    labels.each(function(h){
+      const t = d3.select(this), R = h.r * k;
+      let role = null;
+      if (h.parent === focus) role = 'p'; else if (h.parent && h.parent.parent === focus && R > 32) role = 's';
+      if (!role || R < 15) { t.attr('opacity', 0); return; }
+      const isG = !!h.children, top = isG && R > 70;
+      const fs = isG ? (role === 'p' ? 15 : 11.5) : Math.max(10.5, Math.min(15, R / 4.2));
+      const x = (h.x - v[0]) * k + cx, y = (h.y - v[1]) * k + cy;
+      let s = h.data.short || h.data.name;
+      if (hitCount && isG && hitCount.get(h)) s += ' · ' + hitCount.get(h);
+      const maxC = Math.max(3, Math.floor((top ? R * 1.15 : R * 1.75) / (fs * 0.56)));
+      if (s.length > maxC) s = s.slice(0, maxC - 1).trimEnd() + '…';
+      t.attr('x', x).attr('y', top ? y - R + fs + 12 : y).attr('font-size', fs).attr('font-weight', isG && role === 'p' ? 650 : 500)
+       .attr('opacity', role === 'p' ? 1 : 0.7).text(s);
+    });
+  }
+  function setPointer(){
+    circles.style('pointer-events', h => (h === focus || h.parent === focus || isAnc(h, focus)) ? 'auto' : 'none')
+      .classed('out', h => !(h === focus || isAnc(focus, h) || isAnc(h, focus)));
+  }
+  function crumbs(){ setCrumbs(pathTo(focus.data).map((n, i) => ({label: i === 0 ? 'Start' : (n.short || n.name), fn: () => { closeSheet(); zoom(HM.get(n.id)); }}))); }
+  function zoom(h){
+    focus = h; setPointer(); crumbs();
+    const target = [h.x, h.y, h.r * 2 * 1.03], i = d3.interpolateZoom(view, target);
+    const dur = reduceMotion ? 0 : Math.max(420, Math.min(950, i.duration * 0.6));
+    if (!dur) { zoomTo(target); return; }
+    svg.transition('z').duration(dur).ease(d3.easeCubicInOut).tween('zoom', () => t => zoomTo(i(t)));
+  }
+  function select(h){ sel = h; circles.classed('sel', c => c === h); }
+  function onClick(h){
+    if (h.children) { closeSheet(); if (h === focus) { if (h.parent) zoom(h.parent); } else zoom(h); return; }
+    if (focus !== h.parent) zoom(h.parent);
+    select(h); openSheet(h.data);
+  }
+  function clearSkill(){ skillSel = null; hitCount = null; markSkillbar(null); circles.classed('hit', false).classed('dim', false); zoomTo(view); }
+  const api = {
+    key:'blasen', name:'Blasen',
+    hint:'Jede Blase enthält ihre Unterpunkte, bei Modulen entspricht die Größe den ECTS. Antippen zoomt hinein, Rand oder Hintergrund zoomt heraus. Ein Skill unten hebt alle Belege hervor.',
+    mount(){
+      hier = d3.pack().size([1000, 1000]).padding(d => d.depth === 0 ? 30 : d.depth === 1 ? 16 : 7)(
+        d3.hierarchy(TREE).sum(d => isLeaf(d) && d.kind !== 'root' ? (d.ects || (d.kind === 'module' ? 5 : 8)) : 0).sort((a, b) => b.value - a.value));
+      HM = new Map(); hier.each(h => HM.set(h.data.id, h));
+      svg = d3.select(stage).append('svg').attr('class', 'stage-svg').attr('aria-label', 'Lebensgraph als Blasen');
+      gC = svg.append('g'); gT = svg.append('g').style('pointer-events', 'none');
+      const all = hier.descendants();
+      circles = gC.selectAll('circle').data(all).join('circle').attr('class', h => 'bl ' + (h.children ? 'grp' : 'leaf'))
+        .each(function(h){ paintCircle(d3.select(this), h); })
+        .on('click', (e, h) => { e.stopPropagation(); onClick(h); });
+      labels = gT.selectAll('text').data(all).join('text').attr('class', h => 'bl-t' + (!h.children && visOf(h.data) === 'done' ? ' on' : '')).attr('opacity', 0);
+      svg.on('click', () => { closeSheet(); if (focus.parent) zoom(focus.parent); });
+      focus = hier; view = [hier.x, hier.y, hier.r * 2];
+      measure(); setPointer(); zoomTo(view); crumbs(); buildSkillbar('dot');
+      ro = new ResizeObserver(() => { measure(); zoomTo(view); }); ro.observe(stage);
+    },
+    unmount(){ ro.disconnect(); svg.interrupt('z'); sel = null; skillSel = null; hitCount = null; },
+    reveal(id){
+      const h = HM.get(id); if (!h) { api.skill(id, false); return; }
+      if (h.children) { closeSheet(); zoom(h); return; }
+      if (focus !== h.parent) zoom(h.parent); select(h); openSheet(h.data);
+    },
+    skill(id, fromBar){
+      if (fromBar && skillSel === id) { clearSkill(); closeSheet(); return; }
+      skillSel = id; markSkillbar(id);
+      const ev = new Set(skillMap.get(id).evidence.map(n => n.id));
+      hitCount = new Map();
+      const hits = hier.leaves().filter(l => ev.has(l.data.id));
+      hits.forEach(l => { let p = l.parent; while (p) { hitCount.set(p, (hitCount.get(p) || 0) + 1); p = p.parent; } });
+      circles.classed('hit', h => ev.has(h.data.id)).classed('dim', h => !h.children && !ev.has(h.data.id));
+      let lca = hits[0];
+      hits.forEach(h => { const anc = new Set(lca.ancestors()); lca = h.ancestors().find(x => anc.has(x)); });
+      if (lca && !lca.children) lca = lca.parent;
+      openSheet(skillMap.get(id)); zoom(lca || hier);
+    },
+    back(){ if (focus.parent) zoom(focus.parent); },
+    onSheet(){ if (!sheetNode) select(null); measure(); zoomTo(view); }
+  };
+  return api;
+})();
+
+/* =====================================================================
+   VARIANTE C · LINIEN  – Liniennetzplan auf der Zeitachse
+   ===================================================================== */
+const Linien = (() => {
+  const D0 = 2022.3, D1 = 2029.6, TODAY = 2026.89;
+  let svg, gBand, gTrk, gToday, gRoute, gSt, gAxis, gBadge, clipRect, zoomB, ro;
+  let W = 0, H = 0, x0, xs, T = d3.zoomIdentity, L = {}, axisY = 0, topY = 0, leftPad = 0, rightPad = 0;
+  let skillSel = null, selected = null, groupFocus = null;
+  const lanes = [['studium','S','Studium'], ['job','A','Arbeit'], ['projekte','P','Projekte'], ['hobbys','H','Hobbys']];
+  const groups = () => [byId.get('wi'), ...byId.get('kids').children];
+
+  function layout(){
+    W = stage.clientWidth; H = stage.clientHeight;
+    const nw = narrow();
+    leftPad = nw ? 50 : 132; rightPad = 28;
+    topY = headerBottom() + 10;
+    L.studium = topY + (nw ? 86 : 96);
+    const gap = Math.max(64, Math.min(140, (H - 190 - L.studium) / 3.5));
+    L.wi = L.studium + Math.min(30, gap * 0.32);
+    L.job = L.studium + gap; L.projekte = L.job + gap; L.hobbys = L.projekte + gap;
+    axisY = L.hobbys + Math.min(52, gap * 0.55);
+    x0 = d3.scaleLinear().domain([D0, D1]).range([leftPad, W - rightPad]);
+    zoomB.extent([[0, 0], [W, H]]).translateExtent([[0, -1e6], [W, 1e6]]);
+  }
+  function stations(){
+    const out = [], minGap = narrow() ? 38 : 60;
+    groups().forEach(gp => {
+      const [a, b] = gp.t, y = gp.id === 'wi' ? L.wi : L.studium, n = gp.children.length;
+      if (xs(b) - xs(a) >= n * minGap) gp.children.forEach((m, i) => out.push({id:m.id, ref:m, lane:'studium', type:'module', x: xs(a + (i + 0.5) * (b - a) / n), y}));
+      else out.push({id:gp.id, ref:gp, lane:'studium', type:'group', x: xs((a + b) / 2), y});
+    });
+    const e = byId.get('j-erste'), t11 = byId.get('j-tech11');
+    out.push({id:e.id, ref:e, lane:'job', type:'job', x: xs((e.t[0] + e.t[1]) / 2), y: L.job});
+    out.push({id:t11.id, ref:t11, lane:'job', type:'job', x: xs(t11.t[0]), y: L.job});
+    const G = 40;
+    const ps = byId.get('projekte').children.slice().sort((a, b) => a.t - b.t).map(p => ({id:p.id, ref:p, lane:'projekte', type:'project', x0: xs(p.t), x: xs(p.t), y: L.projekte}));
+    // Gedrängte Stationen um ihren gemeinsamen Zeitpunkt zentrieren statt nach rechts zu schieben
+    let cl = ps.map(p => ({items:[p], c:p.x0})), merged = true;
+    while (merged) {
+      merged = false;
+      for (let i = 1; i < cl.length; i++) {
+        const A = cl[i - 1], B = cl[i];
+        if ((B.c - (B.items.length - 1) * G / 2) - (A.c + (A.items.length - 1) * G / 2) < G) {
+          const items = A.items.concat(B.items);
+          cl.splice(i - 1, 2, {items, c: items.reduce((s, p) => s + p.x0, 0) / items.length}); merged = true; break;
+        }
+      }
+    }
+    cl.forEach(K => K.items.forEach((p, j) => { p.x = K.c + (j - (K.items.length - 1) / 2) * G; }));
+    ps.forEach(p => out.push(p));
+    const hs = byId.get('hobbys').children, hx0 = leftPad + 30, hx1 = W - rightPad - 30;
+    hs.forEach((h, i) => out.push({id:h.id, ref:h, lane:'hobbys', type:'hobby', x: hx0 + (i + 0.5) * (hx1 - hx0) / hs.length, y: L.hobbys}));
+    return out;
+  }
+  function render(){
+    if (!x0) return;
+    xs = T.rescaleX(x0);
+    const st = stations(), sById = new Map(st.map(s => [s.id, s]));
+
+    gBand.selectAll('g.band').data(groups(), d => d.id).join(en => { const g = en.append('g').attr('class', 'band'); g.append('rect'); g.append('text').attr('class', 'band-t'); return g; })
+      .each(function(gp){
+        const a = xs(gp.t[0]), b = xs(gp.t[1]), w = b - a, g = d3.select(this);
+        g.select('rect').attr('x', a).attr('y', topY).attr('width', Math.max(0, w)).attr('height', Math.max(0, axisY - topY)).attr('rx', 12)
+          .style('fill', 'var(--c-studium)').style('fill-opacity', groupFocus === gp ? 0.08 : 0.035);
+        g.select('text').attr('x', a + 10).attr('y', topY + 20).text(w > 170 ? gp.name + ' · ' + gp.sub : w > 62 ? gp.short : '');
+      });
+
+    const projX = st.filter(s => s.lane === 'projekte').map(s => s.x);
+    const a = xs(2024.79), m = xs(2025.79), c = Math.max(10, Math.min(40, (m - a) * 0.15));
+    const tracks = [
+      {id:'stud', lane:'studium', clip:true, d:`M${a},${L.wi}H${m - c}C${m},${L.wi} ${m},${L.studium} ${m + c},${L.studium}H${xs(2029.21)}`},
+      {id:'job1', lane:'job', clip:true, d:`M${xs(2022.5)},${L.job}H${xs(2023.6)}`},
+      {id:'job2', lane:'job', clip:true, d:`M${xs(2026.33)},${L.job}H${xs(D1) + 40}`},
+      {id:'proj', lane:'projekte', clip:true, d:`M${Math.min(...projX) - 26},${L.projekte}H${Math.max(xs(D1) + 40, Math.max(...projX) + 30)}`},
+      {id:'hob', lane:'hobbys', clip:false, d:`M${leftPad - 20},${L.hobbys}H${W + 20}`}
+    ];
+    gTrk.selectAll('g.trk').data(tracks, d => d.id).join(en => { const g = en.append('g').attr('class', 'trk'); g.append('path').attr('class', 'base'); g.append('path').attr('class', 'solid'); return g; })
+      .each(function(d){
+        const g = d3.select(this);
+        g.select('.base').attr('d', d.d).style('stroke', `var(--c-${d.lane})`).style('display', d.clip ? null : 'none');
+        g.select('.solid').attr('d', d.d).style('stroke', `var(--c-${d.lane})`).attr('clip-path', d.clip ? 'url(#ln-past)' : null);
+      });
+    clipRect.attr('x', -1e4).attr('y', -1e4).attr('width', Math.max(0, xs(TODAY) + 1e4)).attr('height', 2e4);
+    gTrk.selectAll('text.xfer').data([0]).join(en => en.append('text').attr('class', 'xfer'))
+      .attr('x', m + 12).attr('y', L.wi + 18).text('Wechsel WI → KIDS').style('display', (m > leftPad && m < W - 80) ? null : 'none');
+
+    gToday.selectAll('*').remove();
+    const tx = xs(TODAY);
+    if (tx > leftPad - 10 && tx < W) {
+      gToday.append('line').attr('class', 'today').attr('x1', tx).attr('x2', tx).attr('y1', topY).attr('y2', axisY);
+      gToday.append('text').attr('class', 'today-t').attr('x', tx + 6).attr('y', topY + 38).attr('text-anchor', 'start').text('HEUTE');
+    }
+
+    let pts = [];
+    if (skillSel) {
+      const seen = new Set();
+      skillMap.get(skillSel).evidence.forEach(n => { const s = sById.get(n.id) || (n.parent && sById.get(n.parent.id)); if (s && !seen.has(s.id)) { seen.add(s.id); pts.push(s); } });
+      pts.sort((p, q) => p.x - q.x);
+    }
+    const hits = new Set(pts.map(p => p.id));
+    gRoute.selectAll('path').data(pts.length > 1 ? [pts] : []).join('path').attr('class', 'route')
+      .attr('d', d3.line().x(p => p.x).y(p => p.y).curve(d3.curveMonotoneX));
+
+    gSt.selectAll('g.st').data(st, d => d.id).join(en => {
+      const g = en.append('g').attr('class', 'st');
+      g.append('circle').attr('class', 'ha').attr('r', 16).style('fill', 'transparent');
+      g.append('circle').attr('class', 'halo'); g.append('circle').attr('class', 'main'); g.append('circle').attr('class', 'dot'); g.append('text');
+      g.on('click', (e, d) => { e.stopPropagation(); onStation(d); });
+      return g;
+    })
+      .attr('transform', d => `translate(${d.x},${d.y})`).style('display', d => (d.x < leftPad - 14 || d.x > W + 60) ? 'none' : null)
+      .each(function(d){
+        const g = d3.select(this), n = d.ref, col = `var(--c-${d.lane})`;
+        const v = d.type === 'group' ? groupVis(n) : visOf(n), r = d.type === 'group' ? 9 : d.type === 'module' ? 6.5 : 7.5;
+        const hit = hits.has(d.id), isSel = selected === n.id;
+        g.select('.halo').attr('r', r + 6).style('fill', 'none').style('stroke', 'var(--fg)').style('stroke-width', 2).style('opacity', isSel ? 0.9 : 0);
+        g.select('.main').attr('r', hit ? r + 2 : r).style('fill', v === 'done' ? col : 'var(--surface)')
+          .style('stroke', hit ? 'var(--c-skill)' : v === 'done' ? 'var(--bg)' : col).style('stroke-width', hit ? 4 : v === 'done' ? 2.5 : 3)
+          .style('stroke-dasharray', v === 'plan' && !hit ? '2.5 2.5' : null);
+        g.select('.dot').attr('r', v === 'now' ? 2.6 : 0).style('fill', col);
+        const t = g.select('text').attr('class', 'st-t ' + d.type).text(n.mini || n.short || n.name);
+        if (d.lane === 'studium') t.attr('text-anchor', 'start').attr('transform', `translate(4,${-r - 7}) rotate(-35)`);
+        else if (d.type === 'project' || (d.type === 'hobby' && narrow())) t.attr('text-anchor', 'start').attr('transform', `translate(3,${r + 9}) rotate(35)`);
+        else t.attr('text-anchor', 'middle').attr('transform', `translate(0,${r + 17})`);
+        g.classed('dim', !!skillSel && !hit);
+      });
+
+    gAxis.selectAll('line.axis').data([0]).join(en => en.append('line').attr('class', 'axis')).attr('x1', leftPad - 20).attr('x2', W).attr('y1', axisY).attr('y2', axisY);
+    gAxis.selectAll('g.yr').data(d3.range(2023, 2030), d => d).join(en => { const g = en.append('g').attr('class', 'yr'); g.append('line').attr('y1', -6).attr('y2', 0); g.append('text').attr('y', 17); return g; })
+      .attr('transform', d => `translate(${xs(d)},${axisY})`).style('display', d => (xs(d) < leftPad - 4 || xs(d) > W) ? 'none' : null)
+      .each(function(d){ d3.select(this).select('text').text(d); });
+
+    gBadge.selectAll('rect.mask').data([0]).join(en => en.append('rect').attr('class', 'mask')).attr('x', 0).attr('y', topY - 4).attr('width', leftPad - 4).attr('height', Math.max(0, axisY - topY + 30)).style('fill', 'url(#ln-fade)');
+    gBadge.selectAll('g.badge').data(lanes, d => d[0]).join(en => { const g = en.append('g').attr('class', 'badge'); g.append('rect'); g.append('text').attr('class', 'code'); g.append('text').attr('class', 'name'); return g; })
+      .attr('transform', d => `translate(16,${L[d[0]]})`)
+      .each(function(d){
+        const g = d3.select(this);
+        g.select('rect').attr('x', 0).attr('y', -12).attr('width', 24).attr('height', 24).attr('rx', 7).style('fill', `var(--c-${d[0]})`);
+        g.select('.code').attr('x', 12).attr('y', 0).text(d[1]);
+        g.select('.name').attr('x', 32).attr('y', 0).text(narrow() ? '' : d[2]);
+      });
+  }
+  function zoomToSpan(span, anim){
+    const [a, b] = span, pad = (b - a) * 0.1, r0 = x0.range();
+    const k = Math.max(1, Math.min(40, (r0[1] - r0[0]) / (x0(b + pad) - x0(a - pad))));
+    const t = d3.zoomIdentity.translate(r0[0] - x0(a - pad) * k, 0).scale(k);
+    (anim !== false && !reduceMotion ? svg.transition('z').duration(750).ease(d3.easeCubicInOut) : svg).call(zoomB.transform, t);
+  }
+  function crumbs(){
+    if (!groupFocus) { setCrumbs([{label:'Start'}]); return; }
+    setCrumbs([{label:'Start', fn: () => api.back()}, {label: groupFocus.name}]);
+  }
+  function onStation(d){
+    if (d.type === 'group') { groupFocus = d.ref; crumbs(); zoomToSpan(d.ref.t); return; }
+    selected = d.ref.id; openSheet(d.ref); render();
+  }
+  const api = {
+    key:'linien', name:'Linien',
+    hint:'Dein Weg als Liniennetz auf der Zeitachse, gepunktet ist die Zukunft. Ein Semester antippen oder heranzoomen, dann öffnen sich die Module. Ein Skill unten zeichnet seine eigene Linie durch alle Belege.',
+    mount(){
+      svg = d3.select(stage).append('svg').attr('class', 'stage-svg').attr('aria-label', 'Lebensgraph als Liniennetz');
+      const defs = svg.append('defs');
+      clipRect = defs.append('clipPath').attr('id', 'ln-past').append('rect');
+      const grad = defs.append('linearGradient').attr('id', 'ln-fade').attr('x1', 0).attr('x2', 1).attr('y1', 0).attr('y2', 0);
+      grad.append('stop').attr('offset', '72%').style('stop-color', 'var(--bg)').style('stop-opacity', 1);
+      grad.append('stop').attr('offset', '100%').style('stop-color', 'var(--bg)').style('stop-opacity', 0);
+      gBand = svg.append('g'); gTrk = svg.append('g'); gToday = svg.append('g'); gRoute = svg.append('g'); gSt = svg.append('g'); gAxis = svg.append('g'); gBadge = svg.append('g');
+      zoomB = d3.zoom().scaleExtent([1, 40]).on('zoom', e => { T = e.transform; render(); if (e.sourceEvent && T.k < 1.25 && groupFocus) { groupFocus = null; crumbs(); } });
+      svg.call(zoomB).on('dblclick.zoom', null);
+      svg.on('click', e => { if (!e.target.closest('.st')) { selected = null; closeSheet(); render(); } });
+      T = d3.zoomIdentity; groupFocus = null; selected = null; skillSel = null;
+      layout(); buildSkillbar('metro'); crumbs();
+      if (narrow()) zoomToSpan([2024.55, 2027.35], false); else render();
+      ro = new ResizeObserver(() => { layout(); render(); }); ro.observe(stage);
+    },
+    unmount(){ ro.disconnect(); svg.interrupt('z'); },
+    reveal(id){
+      const n = byId.get(id); if (!n) { api.skill(id, false); return; }
+      if (n.kind === 'module') { groupFocus = n.parent; crumbs(); zoomToSpan(n.parent.t); }
+      else if (n.kind === 'project') zoomToSpan([n.t - 0.5, n.t + 0.5]);
+      else if (n.kind === 'job') zoomToSpan([n.t[0] - 0.3, (n.t[1] || n.t[0] + 1) + 0.3]);
+      selected = n.id; openSheet(n); render();
+    },
+    skill(id, fromBar){
+      if (fromBar && skillSel === id) { skillSel = null; markSkillbar(null); closeSheet(); render(); return; }
+      skillSel = id; markSkillbar(id); openSheet(skillMap.get(id)); render();
+    },
+    back(){ groupFocus = null; crumbs(); svg.transition('z').duration(reduceMotion ? 0 : 700).ease(d3.easeCubicInOut).call(zoomB.transform, d3.zoomIdentity); },
+    onSheet(){ if (!sheetNode && selected) { selected = null; render(); } }
+  };
+  return api;
+})();
+
+/* =====================================================================
+   SCHALTER + ROUTING
+   ===================================================================== */
+const VARIANTS = [Netz, Blasen, Linien];
+const LETTERS = ['A', 'B', 'C'];
+function activate(key){
+  const v = VARIANTS.find(x => x.key === key) || VARIANTS[0];
+  if (active === v) return;
+  if (active) active.unmount();
+  closeSheet(); stage.innerHTML = '';
+  skillbar.innerHTML = ''; skillbar.hidden = true; document.body.classList.remove('has-skillbar');
+  active = v;
+  $('#sw-name').textContent = LETTERS[VARIANTS.indexOf(v)] + ' · ' + v.name;
+  $('#hint').textContent = v.hint;
+  syncFade();
+  v.mount();
+  if (location.hash !== '#' + v.key) { try { history.replaceState(null, '', '#' + v.key); } catch (e) { /* Rahmen erlaubt es nicht */ } }
+}
+function syncFade(){ document.documentElement.style.setProperty('--fade-h', Math.round(headerBottom() + 28) + 'px'); }
+window.addEventListener('resize', syncFade);
+function cycle(dir){ const i = VARIANTS.indexOf(active); activate(VARIANTS[(i + dir + VARIANTS.length) % VARIANTS.length].key); }
+$('#sw-prev').addEventListener('click', () => cycle(-1));
+$('#sw-next').addEventListener('click', () => cycle(1));
+window.addEventListener('hashchange', () => activate(location.hash.slice(1)));
+window.addEventListener('keydown', e => {
+  if (e.target && e.target.closest && e.target.closest('input,textarea,[contenteditable]')) return;
+  if (e.key === 'ArrowRight') cycle(1);
+  else if (e.key === 'ArrowLeft') cycle(-1);
+  else if (e.key === 'Escape') { if (sheetNode) closeSheet(); else if (active) active.back(); }
+});
+activate((location.hash || '#netz').slice(1));
+})();
+</script>

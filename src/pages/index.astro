@@ -1,0 +1,35 @@
+---
+import Base from '../layouts/Base.astro';
+import { loadGraph, toJsonScript } from '../lib/graph';
+import '../styles/lebensgraph.css';
+
+const data = await loadGraph();
+---
+<Base title="David Staufer" description="David Staufer studiert KI & Data Science in Würzburg. Sein Studium, seine Projekte, seine Arbeit und seine Hobbys als begehbares Sonnensystem.">
+  <div id="stage"></div>
+
+  <div class="intro" id="intro" role="button" tabindex="0" aria-label="Einflug überspringen">
+    <div><h1>David Staufer</h1><p>KI &amp; Data Science · Würzburg</p></div>
+    <small>Tippen zum Überspringen</small>
+  </div>
+
+  <header class="top">
+    <div class="brand"><span class="mono" aria-hidden="true">DS</span><div><b>David Staufer</b><span>KI &amp; Data Science · Würzburg</span></div></div>
+    <nav class="crumbs" id="crumbs" aria-label="Pfad"></nav>
+    <p class="hint">Antippen fliegt hin und folgt der Bahn. Projekte, Hobbys und Module verwandeln sich aus der Nähe in ihr 3D-Modell, die Sonne erzählt, wer ich bin. Ein Skill unten verbindet seine Belege zu einem Sternbild.</p>
+    <div class="legend" aria-label="Legende"><span><i class="d done"></i>bestanden / online</span><span><i class="d now"></i>läuft / in Arbeit</span><span><i class="d plan"></i>geplant</span><span>Größe = Umfang · innen = Kern</span></div>
+  </header>
+
+  <button class="motion" id="motion" aria-pressed="false"><svg viewBox="0 0 14 14" aria-hidden="true"></svg><span>Bewegung anhalten</span></button>
+
+  <aside class="sheet" id="sheet" aria-live="polite"></aside>
+  <div class="skillbar" id="skillbar"></div>
+
+  <p class="sr-only">Alles auch als Liste: <a href="/klassisch/">klassische Ansicht</a>.</p>
+  <noscript><p class="nogl">Die 3D-Ansicht braucht JavaScript. <a href="/klassisch/">Zur klassischen Ansicht</a></p></noscript>
+
+  <script type="application/json" id="lebensgraph-daten" set:html={toJsonScript(data)}></script>
+  <script>
+    import '../scripts/lebensgraph/main.ts';
+  </script>
+</Base>

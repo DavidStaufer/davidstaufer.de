@@ -1,0 +1,1053 @@
+<title>Lebensgraph 3D Prototyp</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  PROTOTYP 2 – Wegwerf-Code. Frage: Wie sieht der Lebensgraph von DavidStaufer.de in echtem 3D aus?
+  Drei strukturell verschiedene 3D-Welten, umschaltbar über die Leiste unten bzw. ←/→ und den Hash (#galaxie, #sonne, #inseln).
+  Technik wie die Lernseite „Deep Learning 3D“: three.js 0.147 + OrbitControls + CSS2D-Beschriftungen.
+  Inhalte: echte Module/Projekte/Hobbys aus der Planung vom 20.11.2026, alle Texte sind Entwürfe.
+-->
+<style>
+/* Layout: vollflächige WebGL-Bühne, darüber schwebende Glas-Ebenen – Kopf oben links, Detailblatt rechts (Handy: unten), Skill-Leiste und Variantenschalter unten */
+:root{
+  --bg:#f5f5f7; --surface:#ffffff; --fg:#1d1d1f; --fg-2:#6e6e73; --fg-3:#aeaeb2;
+  --line:rgba(29,29,31,.12); --mat:rgba(255,255,255,.76); --mat-edge:rgba(255,255,255,.8);
+  --shadow:0 14px 44px rgba(20,24,40,.14), 0 2px 6px rgba(20,24,40,.06);
+  --c-studium:#007aff; --c-job:#ff9500; --c-projekte:#34c759; --c-hobbys:#ff2d55; --c-skill:#5e5ce6; --c-root:#1d1d1f;
+  --on-color:#ffffff;
+  --pill-bg:rgba(29,29,31,.92); --pill-fg:#f5f5f7; --pill-dim:rgba(245,245,247,.55);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-round:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b0b0e; --surface:#1c1c1e; --fg:#f5f5f7; --fg-2:#a1a1a6; --fg-3:#636366;
+    --line:rgba(245,245,247,.13); --mat:rgba(30,30,32,.72); --mat-edge:rgba(255,255,255,.08);
+    --shadow:0 14px 44px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.3);
+    --c-studium:#0a84ff; --c-job:#ff9f0a; --c-projekte:#30d158; --c-hobbys:#ff375f; --c-skill:#7d7aff; --c-root:#f5f5f7;
+    --pill-bg:rgba(245,245,247,.94); --pill-fg:#1d1d1f; --pill-dim:rgba(29,29,31,.5);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b0b0e; --surface:#1c1c1e; --fg:#f5f5f7; --fg-2:#a1a1a6; --fg-3:#636366;
+  --line:rgba(245,245,247,.13); --mat:rgba(30,30,32,.72); --mat-edge:rgba(255,255,255,.08);
+  --shadow:0 14px 44px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.3);
+  --c-studium:#0a84ff; --c-job:#ff9f0a; --c-projekte:#30d158; --c-hobbys:#ff375f; --c-skill:#7d7aff; --c-root:#f5f5f7;
+  --pill-bg:rgba(245,245,247,.94); --pill-fg:#1d1d1f; --pill-dim:rgba(29,29,31,.5);
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg); color:var(--fg); font:15px/1.45 var(--font); overflow:hidden; -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent}
+button{font:inherit; color:inherit}
+button:focus-visible,.sk:focus-visible{outline:2px solid var(--c-studium); outline-offset:2px}
+
+#stage{position:fixed; inset:0}
+.gl{position:absolute; inset:0; display:block; width:100%; height:100%}
+.labels3{position:absolute; top:0; left:0; touch-action:none; cursor:grab}
+.labels3:active{cursor:grabbing}
+.nogl{position:absolute; inset:0; display:grid; place-items:center; margin:0; color:var(--fg-2)}
+/* Kanteneffekt statt Trennlinie: der Kopf bleibt über der Szene lesbar */
+body::before{content:""; position:fixed; z-index:15; inset:0 0 auto; height:var(--fade-h, 190px); background:linear-gradient(var(--bg) 58%, color-mix(in srgb, var(--bg) 0%, transparent)); pointer-events:none}
+
+/* ---------- Beschriftungen im Raum ---------- */
+.l3{pointer-events:none; transition:opacity .25s ease}
+.l3.hit{pointer-events:auto; cursor:pointer}
+.l3.hide{pointer-events:none !important}
+.l3 span{display:block; position:relative; top:1.1em; font:600 12px/1.2 var(--font); color:var(--fg); white-space:nowrap; padding:2px 8px; border-radius:999px; background:color-mix(in srgb, var(--bg) 70%, transparent)}
+.l3.mid span{top:0}
+.l3.big span{font-size:14px; font-weight:700; padding:3px 10px; letter-spacing:-.005em}
+.l3.root span{font:700 15px/1.2 var(--font-display); padding:3px 11px}
+.l3.f span{font-size:15px; font-weight:700; background:color-mix(in srgb, var(--bg) 85%, transparent)}
+.l3.sm span{font-size:11.5px; font-weight:600}
+.l3.row span{font-size:12px; font-weight:700; color:var(--c-studium)}
+.l3.note span{font-size:11px; font-weight:500; font-style:italic; color:var(--fg-2)}
+.l3.skill span{color:var(--on-color); background:var(--c-skill); font-size:12px}
+.l3.hide{opacity:0}
+
+/* ---------- Kopf ---------- */
+.top{position:fixed; z-index:20; top:calc(14px + env(safe-area-inset-top,0px)); left:max(16px, env(safe-area-inset-left,0px)); right:max(16px, env(safe-area-inset-right,0px)); display:flex; flex-direction:column; gap:8px; pointer-events:none}
+.brand{display:flex; align-items:center; gap:10px}
+.mono{width:34px; height:34px; border-radius:50%; display:grid; place-items:center; background:var(--fg); color:var(--bg); font:700 13px var(--font-round); letter-spacing:.02em}
+.brand b{display:block; font:650 17px/1.15 var(--font-display); letter-spacing:-.01em}
+.brand span{display:block; font-size:12px; color:var(--fg-2); letter-spacing:.01em}
+.crumbs{display:flex; flex-wrap:wrap; align-items:center; gap:2px; pointer-events:auto; max-width:min(560px, 100%)}
+.crumb{border:0; background:none; padding:4px 8px; border-radius:8px; font-size:13.5px; color:var(--c-studium); cursor:pointer}
+.crumb:hover{background:var(--line)}
+.crumb.cur{color:var(--fg); font-weight:600; cursor:default; background:none}
+.crumbs .sep{color:var(--fg-3); font-size:13px}
+.hint{margin:0; max-width:54ch; font-size:13px; line-height:1.4; color:var(--fg-2); text-wrap:pretty}
+.legend{display:flex; flex-wrap:wrap; gap:12px; font-size:12px; color:var(--fg-2)}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.d{width:10px; height:10px; border-radius:50%; display:inline-block; box-sizing:border-box}
+.d.done{background:var(--fg-2)}
+.d.now{border:2px solid var(--fg-2); background:color-mix(in srgb, var(--fg-2) 30%, transparent)}
+.d.plan{border:1.5px dashed var(--fg-2)}
+@media (max-width:719px){ .hint{font-size:12.5px} .brand span{display:none} }
+
+/* ---------- Variantenschalter (nicht Teil des Designs) ---------- */
+.switcher{position:fixed; z-index:40; left:50%; bottom:calc(14px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); display:flex; align-items:center; gap:2px; padding:5px; border-radius:999px; background:var(--pill-bg); color:var(--pill-fg); box-shadow:0 10px 30px rgba(0,0,0,.28)}
+.switcher button{width:36px; height:36px; border:0; border-radius:50%; background:transparent; cursor:pointer; display:grid; place-items:center}
+.switcher button:hover{background:color-mix(in srgb, var(--pill-fg) 14%, transparent)}
+.switcher button:active{transform:scale(.94)}
+.switcher svg{width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round}
+.sw-label{min-width:170px; text-align:center; display:flex; flex-direction:column; line-height:1.15; padding-inline:4px}
+.sw-tag{font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--pill-dim)}
+#sw-name{font-weight:650; font-size:14px}
+
+/* ---------- Detailblatt ---------- */
+.sheet{position:fixed; z-index:30; top:calc(16px + env(safe-area-inset-top,0px)); right:max(16px, env(safe-area-inset-right,0px)); bottom:calc(124px + env(safe-area-inset-bottom,0px)); width:360px; box-sizing:border-box; overflow:auto; overscroll-behavior:contain; padding:22px 20px 20px; border-radius:24px; background:var(--mat); -webkit-backdrop-filter:blur(26px) saturate(180%); backdrop-filter:blur(26px) saturate(180%); border:1px solid var(--mat-edge); box-shadow:var(--shadow); opacity:0; transform:translateX(28px) scale(.985); pointer-events:none; transition:opacity .22s ease, transform .38s cubic-bezier(.2,.9,.25,1)}
+.sheet.open{opacity:1; transform:none; pointer-events:auto}
+@media (max-width:719px){
+  .sheet{top:auto; left:max(8px, env(safe-area-inset-left,0px)); right:max(8px, env(safe-area-inset-right,0px)); width:auto; bottom:calc(112px + env(safe-area-inset-bottom,0px)); max-height:52vh; transform:translateY(32px)}
+}
+.sheet .x{position:absolute; top:14px; right:14px; width:30px; height:30px; border-radius:50%; border:0; background:var(--line); cursor:pointer; display:grid; place-items:center}
+.sheet .x svg{width:12px; height:12px; stroke:var(--fg-2); stroke-width:2.4; stroke-linecap:round}
+.eyebrow{display:flex; align-items:center; gap:7px; font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--fg-2)}
+.eyebrow i{width:9px; height:9px; border-radius:50%; background:var(--c)}
+.sheet h2{margin:8px 40px 2px 0; font:700 26px/1.12 var(--font-display); letter-spacing:-.022em; text-wrap:balance}
+.meta{margin:0 0 10px; font-size:13.5px; color:var(--fg-2); font-variant-numeric:tabular-nums}
+.status{display:inline-flex; align-items:center; gap:7px; padding:4px 10px 4px 8px; border-radius:999px; font-size:12.5px; font-weight:600; background:color-mix(in srgb, var(--c) 14%, transparent); color:var(--fg)}
+.status::before{content:""; width:9px; height:9px; border-radius:50%; box-sizing:border-box}
+.status.done::before{background:var(--c)}
+.status.now::before{border:2px solid var(--c); background:color-mix(in srgb, var(--c) 30%, transparent)}
+.status.plan::before{border:1.5px dashed var(--c)}
+.tags{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
+.tags span{font-size:12.5px; padding:4px 9px; border-radius:8px; background:var(--line); color:var(--fg)}
+.sheet section{margin-top:18px}
+.sheet h3{margin:0 0 6px; font-size:12px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-2); display:flex; align-items:center; gap:8px}
+.sheet h3 em{font-style:normal; letter-spacing:.02em; text-transform:none; font-weight:500; font-size:11px; padding:1px 6px; border-radius:6px; border:1px dashed var(--fg-3); color:var(--fg-2)}
+.sheet p{margin:0; font-size:15px; line-height:1.5; max-width:60ch}
+.sheet p.lead{margin-top:12px; color:var(--fg-2); font-size:14px}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{border:1px solid color-mix(in srgb, var(--c-skill) 35%, transparent); background:color-mix(in srgb, var(--c-skill) 10%, transparent); color:var(--fg); border-radius:999px; padding:5px 11px; font-size:13px; cursor:pointer}
+.chip:hover{background:color-mix(in srgb, var(--c-skill) 18%, transparent)}
+.chip:active{transform:scale(.97)}
+.rel{display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:0; background:none; padding:8px 6px; margin:0 -6px; border-radius:10px; cursor:pointer}
+.rel:hover{background:var(--line)}
+.rel .v{flex:none; width:11px; height:11px; border-radius:50%; box-sizing:border-box; background:var(--c)}
+.rel .v.now{background:color-mix(in srgb, var(--c) 30%, transparent); border:2px solid var(--c)}
+.rel .v.plan{background:transparent; border:1.5px dashed var(--c)}
+.rel span{flex:1; min-width:0; font-size:14.5px}
+.rel small{color:var(--fg-2); font-size:12px; white-space:nowrap}
+.model{display:flex; align-items:center; gap:14px; margin-top:18px; padding:14px; border-radius:16px; background:color-mix(in srgb, var(--c) 8%, var(--surface)); border:1px solid color-mix(in srgb, var(--c) 22%, transparent)}
+.cube{flex:none; width:46px; height:46px; border-radius:12px; background:conic-gradient(from 200deg, color-mix(in srgb, var(--c) 55%, #fff) 0 33%, var(--c) 0 66%, color-mix(in srgb, var(--c) 62%, #000) 0)}
+.model b{display:block; font-size:14px}
+.model span{display:block; font-size:13.5px}
+.model small{display:block; font-size:12px; color:var(--fg-2); margin-top:2px}
+.actions{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap}
+.actions button{flex:1 1 auto; border:1px solid var(--line); background:var(--surface); border-radius:12px; padding:9px 12px; font-size:13.5px; font-weight:600; opacity:.55; cursor:not-allowed}
+.note{margin-top:10px !important; font-size:13px !important; color:var(--fg-2)}
+.taste{margin:0; padding:0; list-style:none; display:grid; gap:6px}
+.taste li{font-size:14px; padding:9px 12px; border-radius:12px; background:var(--line)}
+.photo{margin-top:16px; aspect-ratio:4/3; max-width:100%; border-radius:16px; display:grid; place-content:center; justify-items:center; gap:6px; color:var(--fg-2); font-size:12.5px; background:color-mix(in srgb, var(--c) 10%, var(--surface)); border:1px dashed color-mix(in srgb, var(--c) 40%, transparent)}
+.photo svg{width:54px; height:54px; fill:color-mix(in srgb, var(--c) 45%, var(--fg-3))}
+
+/* ---------- Skill-Leiste ---------- */
+.skillbar{position:fixed; z-index:25; left:0; right:0; bottom:calc(66px + env(safe-area-inset-bottom,0px)); display:flex; gap:8px; overflow-x:auto; padding-block:8px; padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px)); scrollbar-width:none; -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%); mask-image:linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%)}
+.skillbar::-webkit-scrollbar{display:none}
+.sk{flex:none; display:inline-flex; align-items:center; gap:7px; height:34px; padding:0 12px; border-radius:999px; border:1px solid var(--line); background:var(--mat); -webkit-backdrop-filter:blur(20px) saturate(180%); backdrop-filter:blur(20px) saturate(180%); font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap}
+.sk::before{content:""; width:8px; height:8px; border-radius:50%; background:var(--c-skill)}
+.sk .n{color:var(--fg-2); font-size:12px; font-variant-numeric:tabular-nums}
+.sk.on{background:var(--c-skill); color:var(--on-color); border-color:transparent}
+.sk.on::before{background:var(--on-color)}
+.sk.on .n{color:inherit; opacity:.8}
+.sk:active{transform:scale(.97)}
+
+@media (prefers-reduced-motion: reduce){ .sheet{transition:opacity .2s ease; transform:none !important} }
+@media (prefers-reduced-transparency: reduce){ .sheet,.sk{background:var(--surface); -webkit-backdrop-filter:none; backdrop-filter:none} }
+</style>
+
+<div id="stage"></div>
+
+<header class="top">
+  <div class="brand"><span class="mono" aria-hidden="true">DS</span><div><b>David Staufer</b><span>Lebensgraph in 3D · Design-Prototyp 2</span></div></div>
+  <nav class="crumbs" id="crumbs" aria-label="Pfad"></nav>
+  <p class="hint" id="hint"></p>
+  <div class="legend" aria-label="Legende"><span><i class="d done"></i>bestanden / online</span><span><i class="d now"></i>läuft / in Arbeit</span><span><i class="d plan"></i>geplant / nur lokal</span></div>
+</header>
+
+<aside class="sheet" id="sheet" aria-live="polite"></aside>
+<div class="skillbar" id="skillbar"></div>
+
+<nav class="switcher" aria-label="Prototyp-Varianten">
+  <button id="sw-prev" aria-label="Vorherige Variante"><svg viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></svg></button>
+  <div class="sw-label"><span class="sw-tag">Prototyp 2 · Variante</span><span id="sw-name">A · Galaxie</span></div>
+  <button id="sw-next" aria-label="Nächste Variante"><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/renderers/CSS2DRenderer.js"></script>
+<script>
+(() => {
+'use strict';
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const narrow = () => window.innerWidth < 720;
+const headerBottom = () => $('header.top').getBoundingClientRect().bottom;
+const rng = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+
+/* =====================================================================
+   DATEN  (Planung 20.11.2026 – Texte sind Entwürfe)
+   ===================================================================== */
+const SKILLS = [
+  ['python','Python'],['numpy','NumPy'],['pytorch','PyTorch'],['sklearn','scikit-learn'],['xgboost','XGBoost'],
+  ['swift','Swift & SwiftUI'],['ts','TypeScript & React'],['java','Java'],['sql','SQL'],['git','Git'],
+  ['linalg','Lineare Algebra'],['analysis','Analysis & Optimierung'],['stats','Statistik'],['ml','Maschinelles Lernen'],
+  ['dl','Deep Learning'],['algo','Algorithmen'],['testing','Software-Testing'],['netze','Rechnernetze'],['datenq','Datenqualität']
+];
+const mod = (id, name, short, ects, status, tags, text, skills, extra) => Object.assign({id, name, short, kind:'module', ects, status, tags, text, skills}, extra || {});
+
+const TREE = {id:'david', name:'David Staufer', kind:'root', sub:'KI & Data Science · Würzburg', children:[
+  {id:'studium', name:'Studium', kind:'area', area:'studium', sub:'JMU Würzburg', children:[
+    {id:'wi', name:'Wirtschaftsinformatik', short:'WI', kind:'group', sub:'2024–25 · angerechnet', children:[
+      mod('m-gads','Grundlagen Algorithmen & Datenstrukturen','GADS',10,'bestanden',['Sortieren','Bäume & Graphen','Laufzeitanalyse'],'Probleme in Algorithmen zerlegen und abschätzen, wie lange sie laufen.',['algo','java']),
+      mod('m-swtwi','Softwaretechnik','Softwaretechnik',10,'bestanden',['UML','Entwurfsmuster','Teamprojekt'],'Software im Team planen, bevor die erste Zeile Code entsteht.',['java','testing','git']),
+      mod('m-diff','Differentialrechnung','Differentialrechnung',5,'bestanden',['Ableitungen','Extremwerte','Optimierung'],'Das Werkzeug, auf dem später jeder Gradientenabstieg aufbaut.',['analysis']),
+      mod('m-lawi','Lineare Algebra','Lineare Algebra',5,'bestanden',['Matrizen','Gleichungssysteme','Determinanten'],'Rechnen mit Matrizen, der Grundsprache von Daten.',['linalg']),
+      mod('m-statwi','Statistik','Statistik',5,'bestanden',['Verteilungen','Schätzer','Tests'],'Unsicherheit in Zahlen fassen.',['stats']),
+      mod('m-ebiz','E-Business','E-Business',5,'bestanden',['Geschäftsmodelle','Plattformen','Online-Handel'],'Wie digitale Geschäftsmodelle funktionieren und Geld verdienen.',[])
+    ]},
+    {id:'kids', name:'KI & Data Science', short:'KIDS', kind:'group', sub:'B.Sc. seit 10/2025', children:[
+      {id:'s1', name:'1. Semester', short:'1. Sem.', kind:'group', sub:'WS 2025/26', children:[
+        mod('m-gdp','Grundlagen der Programmierung','GdP',5,'bestanden',['Python','Funktionen','Rekursion'],'Sauber programmieren von Grund auf.',['python','algo']),
+        mod('m-akids1','Algorithmen, KI und Data Science 1','AKIDS 1',10,'bestanden',['Suche','Graphalgorithmen','Komplexität'],'Algorithmen als Fundament für KI.',['algo','python','ml']),
+        mod('m-mk1','Mathematik für KIDS 1','Mathe 1',10,'bestanden',['Analysis','Lineare Algebra','Beweise'],'Mathematisch sauber argumentieren.',['analysis','linalg']),
+        mod('m-pp','Programmierpraktikum KIDS','Programmierpraktikum',10,'geplant',['Teamprojekt','Git','Größere Codebasis'],'Ein größeres Programm im Team bauen, mit allem, was dazugehört.',['python','git'])
+      ]},
+      {id:'s2', name:'2. Semester', short:'2. Sem.', kind:'group', sub:'SS 2026', children:[
+        mod('m-akids2','Algorithmen, KI und Data Science 2','AKIDS 2',10,'bestanden',['Dynamische Programmierung','Optimierung','Lernverfahren'],'Vom klassischen Algorithmus zu Verfahren, die aus Daten lernen.',['algo','ml','python']),
+        mod('m-mk2','Mathematik für KIDS 2','Mathe 2',10,'bestanden',['Mehrdimensionale Analysis','Eigenwerte','Wahrscheinlichkeit'],'Die Mathematik, mit der man Modelle wirklich versteht.',['analysis','linalg','stats']),
+        mod('m-dsml','Data Science und Maschinelles Lernen','DSML',5,'bestanden',['Regression','Klassifikation','Evaluation'],'Vom Datensatz zum ersten Modell, und ehrlich messen, ob es taugt.',['ml','sklearn','stats','python']),
+        mod('m-swt','Softwaretechnik für KIDS','Softwaretechnik',5,'bestanden',['Anforderungen','Tests','Code-Review'],'Code so schreiben, dass andere damit weiterarbeiten können.',['testing','git'])
+      ]},
+      {id:'s3', name:'3. Semester', short:'3. Sem.', kind:'group', sub:'WS 2026/27', children:[
+        mod('m-dl','Deep Learning','Deep Learning',5,'läuft',['Backpropagation','CNNs','RNNs & LSTMs','PyTorch'],'Neuronale Netze von Hand bauen: Im Lab entsteht ein eigenes kleines Framework.',['dl','pytorch','numpy','python'],{links:['p-dllab'], taste:['Deep Learning 3D']}),
+        mod('m-toml','Theory of Machine Learning','Theory of ML',5,'läuft',['Lerntheorie','Generalisierung','Kernel-Methoden'],'Warum Lernen aus Daten überhaupt funktioniert, mathematisch begründet.',['ml','stats']),
+        mod('m-m3','Mathematical Foundations of Data Science 1','Mathe 3',null,'läuft',['Lineare Regression','Pseudoinverse','Hypothesentests'],'Die Statistik hinter Regression und Tests.',['stats','linalg'],{taste:['Der p-Wert','Die Pseudoinverse']}),
+        mod('m-rui','Rechnernetze und Informationsübertragung','Rechnernetze',10,'läuft',['Protokolle','TCP/IP','Informationstheorie'],'Wie Daten zuverlässig von A nach B kommen.',['netze']),
+        mod('m-db','Datenbanken','Datenbanken',5,'geplant',['SQL','Relationenmodell','Transaktionen'],'Daten sauber modellieren und abfragen.',['sql']),
+        mod('m-lab1','KI und Data Science Lab 1','Lab 1',10,'geplant',['Projektarbeit','KI-Anwendung','Team'],'Ein echtes KI-Projekt im Team, von der Idee bis zur Auswertung.',['python','ml'])
+      ]},
+      {id:'s4', name:'4. Semester', short:'4. Sem.', kind:'group', sub:'SS 2027', children:[
+        mod('m-thi','Theoretische Informatik','Theoretische Informatik',null,'geplant',['Automaten','Formale Sprachen','Berechenbarkeit'],'Was Computer grundsätzlich können und was nicht.',['algo']),
+        mod('m-ra','Rechenanlagen','Rechenanlagen',null,'geplant',['Rechnerarchitektur','Assembler','Speicher'],'Was unter dem Code in der Hardware passiert.',[]),
+        mod('m-bs','Betriebssysteme','Betriebssysteme',null,'geplant',['Prozesse','Speicherverwaltung','Nebenläufigkeit'],'Wie ein Betriebssystem Programme organisiert.',[]),
+        mod('m-lab2','KI und Data Science Lab 2','Lab 2',null,'geplant',['Projektarbeit','Team'],'Das zweite große Teamprojekt.',['ml'])
+      ]},
+      {id:'s5', name:'5. Semester', short:'5. Sem.', kind:'group', sub:'WS 2027/28', children:[
+        mod('m-num','Numerik 1','Numerik',null,'geplant',['Fehleranalyse','Gleichungssysteme','Interpolation'],'Rechnen mit endlicher Genauigkeit, ohne dass Ergebnisse kippen.',['linalg','analysis']),
+        mod('m-fp','Funktionale Programmierung','Funktionale Progr.',null,'geplant',['Funktionen höherer Ordnung','Typsysteme','Rekursion'],'Ein anderer Blick aufs Programmieren.',[]),
+        mod('m-lab3','KI und Data Science Lab 3','Lab 3',null,'geplant',['Projektarbeit','Team'],'Das dritte Teamprojekt.',['ml'])
+      ]},
+      {id:'s67', name:'6.–7. Semester', short:'6.–7. Sem.', kind:'group', sub:'SS 2028 – WS 2028/29', children:[
+        mod('m-mci','Einführung in die Mensch-Computer-Interaktion','MCI',null,'geplant',['Usability','Nutzerstudien','Prototyping'],'Software für Menschen statt für Compiler.',[]),
+        mod('m-ba','Bachelorarbeit','Bachelorarbeit',null,'geplant',['Thema folgt'],'Thema folgt.',['ml'])
+      ]}
+    ]}
+  ]},
+  {id:'arbeit', name:'Arbeit', kind:'area', area:'job', sub:'Werkstudent', children:[
+    {id:'j-tech11', kind:'job', name:'tech11', status:'aktuell', sub:'Werkstudent Softwaretest · seit 05/2026', tags:['QA','Testdesign','Bug-Tracking','Datenvalidierung'], text:'Testfälle entwerfen, Fehler nachvollziehbar dokumentieren und Daten auf Plausibilität prüfen.', skills:['testing','datenq']},
+    {id:'j-erste', kind:'job', name:'Erste Arbeitserfahrung', short:'Erste Erfahrung', status:'frueher', sub:'Praktikum & Sekretariat · 2022–23', tags:['Praktikum Industrie','Sekretariat Klinik'], text:'Zuverlässig im Arbeitsalltag funktionieren, bevor es um Code ging.', skills:[]}
+  ]},
+  {id:'projekte', name:'Projekte', kind:'area', area:'projekte', sub:'eigene Projekte', children:[
+    {id:'p-bundesliga', kind:'project', name:'Bundesliga Predictor', short:'Bundesliga', status:'v1', sub:'Python · XGBoost · 11 Saisons', tags:['Feature Engineering','XGBoost','≈ 48 % Trefferquote'], text:'Sagt Ausgänge von Bundesliga-Spielen vorher. Geht als erstes Projekt online.', skills:['python','xgboost','ml','stats'], model:'Klassisches ML · Entscheidungsbaum-Wald'},
+    {id:'p-immo', kind:'project', name:'Würzburg Preisvorhersage', short:'Immo ML', status:'arbeit', sub:'Python · scikit-learn', tags:['Regression','R² ≈ 0,88','Feature Engineering'], text:'Schätzt Wohnungspreise in Würzburg.', skills:['python','sklearn','ml','stats'], model:'Klassisches ML · Regressionsfläche'},
+    {id:'p-party', kind:'project', name:'Party Game', status:'arbeit', sub:'TypeScript · React · WebSocket', tags:['Multiplayer','Minigames','Docker'], text:'Multiplayer-Partyspiel im Browser mit Minigames.', skills:['ts','git'], model:'Software-Architektur in 3D'},
+    {id:'p-news', kind:'project', name:'News Trading AI', short:'News AI', status:'arbeit', sub:'Python · GDELT · Alpaca', tags:['Sentiment','Zeitreihen','Backtesting'], text:'Haben Finanznachrichten Vorhersagekraft für Aktienrenditen?', skills:['python','stats','ml'], model:'Klassisches ML · Pipeline'},
+    {id:'p-kompass', kind:'project', name:'Kompass', status:'lokal', sub:'SwiftUI · Mac & iPhone', tags:['Lernplanung','Kalender','Zeiterfassung','KI-Assistent'], text:'Meine Lern- und Kalender-App. Dient beim Bau der Seite als Testprojekt und bleibt vorerst lokal.', skills:['swift','git'], model:'App · drehbares 3D-iPhone'},
+    {id:'p-dllab', kind:'project', name:'Eigenes DL-Framework', short:'DL-Framework', status:'arbeit', sub:'Uni-Lab Deep Learning · Python · NumPy', tags:['Layer','Backward Pass','Optimierer'], text:'Im DL-Lab entsteht Schritt für Schritt eine eigene kleine Bibliothek für neuronale Netze.', skills:['python','numpy','dl','linalg'], model:'Neuronales Netz in 3D', lab:true}
+  ]},
+  {id:'hobbys', name:'Hobbys', kind:'area', area:'hobbys', sub:'Freizeit', children:[
+    {id:'h-fussball', kind:'hobby', name:'Fußball', status:'hobby', tags:['Kicktipp','Bundesliga'], text:'Platzhalter, dein eigener Text folgt.', links:['p-bundesliga'], model:'Motivation in 3D · kommt in Version 1'},
+    {id:'h-maerkte', kind:'hobby', name:'Märkte & Daten', status:'hobby', tags:['Aktien','Nachrichten'], text:'Platzhalter, dein eigener Text folgt.', links:['p-news'], model:'Motivation in 3D · folgt später'},
+    {id:'h-paddle', kind:'hobby', name:'Paddle Tennis', status:'hobby', tags:[], text:'Platzhalter, dein eigener Text folgt.', model:'Motivation in 3D · folgt später'},
+    {id:'h-ski', kind:'hobby', name:'Skifahren', status:'hobby', tags:[], text:'Platzhalter, dein eigener Text folgt.', model:'Motivation in 3D · folgt später'}
+  ]}
+]};
+
+const STATUS = {
+  'bestanden':{vis:'done', label:'Bestanden'}, 'läuft':{vis:'now', label:'Läuft gerade'}, 'geplant':{vis:'plan', label:'Geplant'},
+  'v1':{vis:'done', label:'Online ab Version 1'}, 'arbeit':{vis:'now', label:'In Arbeit · noch nicht online'}, 'lokal':{vis:'plan', label:'Nur lokal · Testprojekt'},
+  'aktuell':{vis:'now', label:'Aktuell'}, 'frueher':{vis:'done', label:'Abgeschlossen'}, 'hobby':{vis:'done', label:null}
+};
+const AREA_LABEL = {studium:'Studium', job:'Arbeit', projekte:'Projekte', hobbys:'Hobbys', skill:'Skill'};
+
+const byId = new Map(), leaves = [];
+(function walk(n, p, depth){
+  n.parent = p; n.depth = depth; if (p && !n.area) n.area = p.area; byId.set(n.id, n);
+  if (n.children && n.children.length) n.children.forEach(c => walk(c, n, depth + 1)); else if (n.kind !== 'root') leaves.push(n);
+})(TREE, null, 0);
+const skillMap = new Map(SKILLS.map(([id, name]) => [id, {id, name, kind:'skill', area:'skill', depth:9, evidence:[]}]));
+leaves.forEach(l => (l.skills || []).forEach(s => skillMap.get(s).evidence.push(l)));
+
+const isLeaf = n => !n.children || !n.children.length;
+const isDesc = (n, a) => { let p = n.parent; while (p) { if (p === a) return true; p = p.parent; } return false; };
+const color = n => n.kind === 'root' ? 'var(--c-root)' : n.kind === 'skill' ? 'var(--c-skill)' : `var(--c-${n.area})`;
+const visOf = n => (STATUS[n.status] || {}).vis || 'done';
+const pathTo = n => { const p = []; while (n) { p.unshift(n); n = n.parent; } return p; };
+function relationsOf(n){
+  const out = new Map();
+  (n.links || []).forEach(id => { const r = byId.get(id); if (r) out.set(id, r); });
+  byId.forEach(o => { if ((o.links || []).includes(n.id)) out.set(o.id, o); });
+  return [...out.values()];
+}
+const joinDe = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' und ' + a[a.length - 1];
+
+/* =====================================================================
+   GEMEINSAME OBERFLÄCHE: Pfad, Detailblatt, Skill-Leiste, Schalter
+   ===================================================================== */
+const stage = $('#stage'), sheet = $('#sheet'), skillbar = $('#skillbar');
+let active = null, sheetNode = null;
+
+function setCrumbs(items){
+  const el = $('#crumbs'); el.innerHTML = '';
+  items.forEach((it, i) => {
+    if (i) el.insertAdjacentHTML('beforeend', '<span class="sep" aria-hidden="true">›</span>');
+    const last = i === items.length - 1;
+    const b = document.createElement(last ? 'span' : 'button');
+    b.className = 'crumb' + (last ? ' cur' : ''); b.textContent = it.label;
+    if (!last && it.fn) b.addEventListener('click', it.fn);
+    el.appendChild(b);
+  });
+}
+const crumbsFor = (n, go) => setCrumbs(pathTo(n).map((x, i) => ({label: i === 0 ? 'Start' : (x.short || x.name), fn: () => { closeSheet(); go(x); }})));
+
+const ICON_X = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>';
+const ICON_PERSON = '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="17" r="9"/><path d="M7 44c1.5-9.5 8.5-15 17-15s15.5 5.5 17 15z"/></svg>';
+const textLabel = n => {
+  if (n.kind === 'module') return {'bestanden':'Was ich mitnehme', 'läuft':'Was ich gerade lerne', 'geplant':'Darum geht’s'}[n.status];
+  if (n.kind === 'project') return 'Worum es geht';
+  if (n.kind === 'job') return n.status === 'aktuell' ? 'Was ich mache' : 'Was ich mitnehme';
+  if (n.kind === 'hobby') return 'Warum ich das mache';
+  return null;
+};
+const eyebrowOf = n => ({module:'Studium · Modul', project:'Projekt', job:'Arbeit', hobby:'Hobby', skill:'Skill'})[n.kind] || AREA_LABEL[n.area] || '';
+const metaOf = n => n.kind === 'module' ? [n.parent.name, n.parent.sub, n.ects ? n.ects + ' ECTS' : null].filter(Boolean).join(' · ') : (n.sub || '');
+const relSub = r => r.kind === 'module' ? (r.parent.short || r.parent.name) : (AREA_LABEL[r.area] || '');
+const relBtn = r => `<button class="rel" data-reveal="${r.id}" style="--c:${color(r)}"><i class="v ${visOf(r)}"></i><span>${esc(r.name)}</span><small>${esc(relSub(r))}</small></button>`;
+function skillEvidenceHTML(s){
+  const by = {}; s.evidence.forEach(e => (by[e.area] = by[e.area] || []).push(e));
+  const nm = {studium:['Modul','Modulen'], job:['Job','Jobs'], projekte:['Projekt','Projekten'], hobbys:['Hobby','Hobbys']};
+  const parts = Object.keys(nm).filter(a => by[a]).map(a => by[a].length + ' ' + nm[a][by[a].length === 1 ? 0 : 1]);
+  let h = `<p class="lead">Belegt in ${joinDe(parts)}.</p>`;
+  Object.keys(nm).forEach(a => { if (by[a]) h += `<section><h3>${AREA_LABEL[a]}</h3>${by[a].map(relBtn).join('')}</section>`; });
+  return h;
+}
+function openSheet(n){
+  sheetNode = n;
+  const c = color(n);
+  let h = `<button class="x" data-act="close" aria-label="Detail schließen">${ICON_X}</button>`;
+  h += `<div class="eyebrow" style="--c:${c}"><i></i>${esc(eyebrowOf(n))}</div><h2>${esc(n.name)}</h2>`;
+  const meta = metaOf(n); if (meta) h += `<p class="meta">${esc(meta)}</p>`;
+  const st = STATUS[n.status]; if (st && st.label) h += `<span class="status ${st.vis}" style="--c:${c}">${esc(st.label)}</span>`;
+  if (n.tags && n.tags.length) h += `<div class="tags">${n.tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>`;
+  if (n.kind === 'hobby') h += `<div class="photo" style="--c:${c}">${ICON_PERSON}<span>Foto folgt</span></div>`;
+  const tl = textLabel(n); if (tl && n.text) h += `<section><h3>${esc(tl)} <em>Entwurf</em></h3><p>${esc(n.text)}</p></section>`;
+  if (n.model) h += `<div class="model" style="--c:${c}"><div class="cube" aria-hidden="true"></div><div><b>3D-Modell</b><span>${esc(n.model)}</span><small>Kommt im nächsten Prototyp</small></div></div>`;
+  if (n.kind === 'project') {
+    h += `<div class="actions"><button disabled>Code</button><button disabled>Git-Verlauf</button><button disabled>GitHub ↗</button></div>`;
+    if (n.lab) h += `<p class="note">Uni-Lab: Lösungscode bleibt privat, Code auf Anfrage.</p>`;
+  }
+  if (n.taste) h += `<section><h3>Kostprobe</h3><ul class="taste">${n.taste.map(t => `<li>Lernseite „${esc(t)}“</li>`).join('')}</ul></section>`;
+  if (n.skills && n.skills.length) h += `<section><h3>Skills</h3><div class="chips">${n.skills.map(s => `<button class="chip" data-skill="${s}">${esc(skillMap.get(s).name)}</button>`).join('')}</div></section>`;
+  if (n.kind === 'skill') h += skillEvidenceHTML(n);
+  const rels = n.kind === 'skill' ? [] : relationsOf(n);
+  if (rels.length) h += `<section><h3>Verbunden mit</h3>${rels.map(relBtn).join('')}</section>`;
+  sheet.innerHTML = h; sheet.scrollTop = 0; sheet.classList.add('open');
+  if (active && active.onSheet) active.onSheet();
+}
+function closeSheet(){
+  if (!sheetNode) return;
+  sheetNode = null; sheet.classList.remove('open');
+  if (active && active.onSheet) active.onSheet();
+}
+sheet.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !active) return;
+  if (b.dataset.act === 'close') closeSheet();
+  else if (b.dataset.skill) active.skill(b.dataset.skill, false);
+  else if (b.dataset.reveal) active.reveal(b.dataset.reveal);
+});
+(function buildSkillbar(){
+  const list = [...skillMap.values()].filter(s => s.evidence.length).sort((a, b) => b.evidence.length - a.evidence.length);
+  skillbar.innerHTML = list.map(s => `<button class="sk" data-skill="${s.id}">${esc(s.name)}<span class="n">${s.evidence.length}</span></button>`).join('');
+})();
+const markSkillbar = id => skillbar.querySelectorAll('.sk').forEach(b => b.classList.toggle('on', b.dataset.skill === id));
+skillbar.addEventListener('click', e => { const b = e.target.closest('[data-skill]'); if (b && active) active.skill(b.dataset.skill, true); });
+
+if (!window.THREE || !THREE.OrbitControls || !THREE.CSS2DRenderer) { stage.innerHTML = '<p class="nogl">Die 3D-Bibliothek konnte nicht geladen werden.</p>'; return; }
+
+/* =====================================================================
+   3D-MOTOR (gemeinsam): Renderer, Kamera, Kamerafahrten, Antippen
+   ===================================================================== */
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const isDark = () => { const c = new THREE.Color(css('--bg') || '#ffffff'); return (c.r + c.g + c.b) / 3 < .5; };
+const GEO = {};
+function makeGeos(){
+  GEO.sphere = new THREE.SphereGeometry(1, 40, 28);
+  GEO.sphereLo = new THREE.SphereGeometry(1, 14, 10);
+  GEO.torus = new THREE.TorusGeometry(1.6, .07, 8, 72);
+  GEO.octa = new THREE.OctahedronGeometry(1, 0);
+  GEO.ring = new THREE.TorusGeometry(1, .05, 8, 72);
+}
+function makeEngine(o){
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({antialias:true}); }
+  catch (e) { stage.insertAdjacentHTML('beforeend', '<p class="nogl">3D lässt sich in diesem Browser nicht darstellen.</p>'); return null; }
+  const E = {pickables:[], shift:{x:0, y:0}, shiftT:{x:0, y:0}, w:1, h:1};
+  E.col = n => new THREE.Color(css(n) || '#888888');
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.domElement.className = 'gl';
+  if (o.shadows) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
+  stage.appendChild(renderer.domElement);
+  const labels = new THREE.CSS2DRenderer(); labels.domElement.className = 'labels3'; stage.appendChild(labels.domElement);
+  const scene = new THREE.Scene(); scene.background = E.col('--bg');
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 4000);
+  const controls = new THREE.OrbitControls(camera, labels.domElement);
+  controls.enableDamping = true; controls.dampingFactor = .08; controls.rotateSpeed = .6; controls.zoomSpeed = .9; controls.panSpeed = .8; controls.autoRotateSpeed = .35;
+  Object.assign(E, {renderer, labels, scene, camera, controls});
+
+  function applyShift(){ const {x, y} = E.shift; if (Math.abs(x) < .5 && Math.abs(y) < .5) camera.clearViewOffset(); else camera.setViewOffset(E.w, E.h, x, y, E.w, E.h); }
+  E.updateShift = () => {
+    E.shiftT.x = (!narrow() && sheetNode) ? 190 : 0;
+    E.shiftT.y = -(headerBottom() - 124) / 2 + ((narrow() && sheetNode) ? E.h * .22 : 0);
+  };
+  function size(){
+    E.w = stage.clientWidth || 1; E.h = stage.clientHeight || 1;
+    renderer.setSize(E.w, E.h); labels.setSize(E.w, E.h);
+    camera.aspect = E.w / E.h; camera.updateProjectionMatrix();
+    E.updateShift(); E.shift.x = E.shiftT.x; E.shift.y = E.shiftT.y; applyShift();
+  }
+  size();
+  const ro = new ResizeObserver(size); ro.observe(stage);
+  E.fit = ext => { const v = THREE.MathUtils.degToRad(camera.fov) / 2, h = Math.atan(Math.tan(v) * camera.aspect); return ext / Math.sin(Math.min(v, h)) + .5; };
+  const labelNode = new WeakMap();
+  E.label = (parent, text, cls, pos, node) => {
+    const el = document.createElement('div'); el.className = cls;
+    if (node) { labelNode.set(el, node); el.classList.add('hit'); }
+    const sp = document.createElement('span'); sp.textContent = text; el.appendChild(sp);
+    const ob = new THREE.CSS2DObject(el); if (pos) ob.position.copy(pos); parent.add(ob); return el;
+  };
+  E.pick = (obj, node, small) => { const p = {obj, node, small:!!small}; obj.userData.pick = p; E.pickables.push(p); return p; };
+
+  // Kamerafahrt: startet immer an der aktuellen Position, lässt sich jederzeit unterbrechen
+  let fly = null, follow = null; const lastF = new THREE.Vector3();
+  E.flyTo = (tgt, dist, opt) => {
+    opt = opt || {};
+    const get = typeof tgt === 'function' ? tgt : () => tgt;
+    const fromT = controls.target.clone(), fromOff = camera.position.clone().sub(controls.target);
+    const dir = (opt.dir ? opt.dir.clone() : fromOff.clone());
+    if (dir.lengthSq() < 1e-6) dir.set(0, .5, 1);
+    dir.normalize();
+    if (opt.minY != null && dir.y < opt.minY) {
+      const hl = Math.hypot(dir.x, dir.z);
+      if (hl < 1e-4) dir.set(0, opt.minY, Math.sqrt(1 - opt.minY * opt.minY));
+      else { const s = Math.sqrt(1 - opt.minY * opt.minY) / hl; dir.set(dir.x * s, opt.minY, dir.z * s); }
+    }
+    fly = {t0: performance.now(), dur: reduceMotion ? 0 : (opt.dur || 1150), fromT, fromOff, get, toOff: dir.multiplyScalar(dist)};
+    follow = opt.follow ? get : null;
+  };
+  controls.addEventListener('start', () => { if (fly && follow) lastF.copy(follow()); fly = null; controls.autoRotate = false; });
+
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), tmp = new THREE.Vector3();
+  function pickAt(cx, cy){
+    const r = renderer.domElement.getBoundingClientRect(), mx = cx - r.left, my = cy - r.top;
+    ndc.set(mx / r.width * 2 - 1, -(my / r.height) * 2 + 1);
+    camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera); ray.params.Line.threshold = .3;
+    const hits = ray.intersectObjects(E.pickables.filter(p => p.obj.visible !== false && p.off !== true).map(p => p.obj), true);
+    for (const h of hits) { let ob = h.object; while (ob && !ob.userData.pick) ob = ob.parent; if (ob) return ob.userData.pick; }
+    let best = null, bd = 26;
+    E.pickables.forEach(p => {
+      if (!p.small || p.off) return;
+      p.obj.getWorldPosition(tmp); tmp.project(camera); if (tmp.z > 1 || tmp.z < -1) return;
+      const d = Math.hypot((tmp.x + 1) / 2 * r.width - mx, (1 - tmp.y) / 2 * r.height - my);
+      if (d < bd) { bd = d; best = p; }
+    });
+    return best;
+  }
+  const el = labels.domElement; let down = null, hoverRaf = 0;
+  el.addEventListener('pointerdown', e => { const l = e.target.closest && e.target.closest('.l3.hit'); down = {x:e.clientX, y:e.clientY, node: l ? labelNode.get(l) : null}; });
+  el.addEventListener('pointerup', e => {
+    if (!down) return; const d = down, m = Math.hypot(e.clientX - d.x, e.clientY - d.y); down = null;
+    if (m > 7) return; if (d.node) { o.onPick(d.node); return; } const p = pickAt(e.clientX, e.clientY); o.onPick(p ? p.node : null);
+  });
+  el.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || e.buttons || hoverRaf) return;
+    hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; const p = pickAt(e.clientX, e.clientY); el.style.cursor = p ? 'pointer' : ''; if (o.onHover) o.onHover(p ? p.node : null); });
+  });
+
+  const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  let raf = 0, last = performance.now(), alive = true;
+  function frame(now){
+    if (!alive) return; raf = requestAnimationFrame(frame);
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    if (o.update) o.update(dt, now / 1000);
+    if (fly) {
+      const t = fly.dur ? Math.min(1, (now - fly.t0) / fly.dur) : 1, k = ease(t), T = fly.get();
+      controls.target.lerpVectors(fly.fromT, T, k);
+      camera.position.copy(controls.target).add(fly.fromOff.clone().lerp(fly.toOff, k));
+      if (t >= 1) { fly = null; lastF.copy(T); }
+    } else if (follow) { const T = follow(); camera.position.add(T.clone().sub(lastF)); controls.target.add(T.clone().sub(lastF)); lastF.copy(T); }
+    const sx = E.shiftT.x - E.shift.x, sy = E.shiftT.y - E.shift.y;
+    if (Math.abs(sx) > .3 || Math.abs(sy) > .3) { E.shift.x += sx * .16; E.shift.y += sy * .16; applyShift(); }
+    controls.update();
+    renderer.render(scene, camera); labels.render(scene, camera);
+  }
+  raf = requestAnimationFrame(frame);
+  E.dispose = () => {
+    alive = false; cancelAnimationFrame(raf); ro.disconnect(); controls.dispose();
+    scene.traverse(ob => { if (ob.geometry) ob.geometry.dispose(); if (ob.material) [].concat(ob.material).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); });
+    renderer.dispose(); if (renderer.forceContextLoss) renderer.forceContextLoss();
+  };
+  return E;
+}
+// Kugel mit Status: fertig = massiv, läuft = Ring, geplant = Glas mit Drahtgitter
+function makeOrb(n, c, rad, isSkill){
+  const v = (isSkill || n.kind === 'root' || !isLeaf(n)) ? 'done' : visOf(n);
+  const mat = new THREE.MeshStandardMaterial({color:c, roughness:.32, metalness:.06, emissive:c, emissiveIntensity: n.kind === 'root' ? .3 : .16, transparent:true, opacity: v === 'plan' ? .22 : 1});
+  const mesh = new THREE.Mesh(isSkill ? GEO.octa : GEO.sphere, mat); mesh.scale.setScalar(rad);
+  const mats = [mat], base = [mat.opacity];
+  if (v === 'now') { const m2 = new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:.95}); const ring = new THREE.Mesh(GEO.torus, m2); ring.rotation.x = Math.PI / 2.3; mesh.add(ring); mats.push(m2); base.push(.95); }
+  if (v === 'plan') { const m3 = new THREE.MeshBasicMaterial({color:c, wireframe:true, transparent:true, opacity:.55}); const w = new THREE.Mesh(GEO.sphereLo, m3); w.scale.setScalar(1.03); mesh.add(w); mats.push(m3); base.push(.55); }
+  return {n, mesh, mats, base, alpha:1};
+}
+function fadeMats(rec, rate){ rec.mats.forEach((m, i) => { const t = rec.base[i] * rec.alpha; if (Math.abs(m.opacity - t) > .002) m.opacity += (t - m.opacity) * rate; }); }
+function addStars(E, count, rand){
+  const p = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) { const v = new THREE.Vector3(rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1).normalize().multiplyScalar(700 + rand() * 600); p.set([v.x, v.y, v.z], i * 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  E.scene.add(new THREE.Points(g, new THREE.PointsMaterial({color: E.col('--fg-3'), size: 1.6, sizeAttenuation:false, transparent:true, opacity: isDark() ? .8 : .5, fog:false})));
+}
+
+/* =====================================================================
+   VARIANTE A · GALAXIE – Sternhaufen im Raum, Kamera fliegt hinein
+   ===================================================================== */
+const Galaxie = (() => {
+  let E = null, focus = TREE, selected = null, skillSel = null, hover = null;
+  const recs = new Map(); let edges = [], skillLines = null, selRing = null;
+  const D = [0, 46, 20, 8.5, 4.2];
+  const RAD = n => n.kind === 'root' ? 3.6 : n.kind === 'skill' ? .6 : n.depth === 1 ? 2.3 : !isLeaf(n) ? (n.depth === 2 ? 1.25 : .75) : (n.depth >= 3 ? .42 : .85);
+  function fibDirs(n, axis, cap, full){
+    const out = [], q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis.clone().normalize()), ga = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < n; i++) {
+      const th = full ? Math.acos(1 - 2 * (i + .5) / n) : (n === 1 ? 0 : cap * Math.sqrt((i + .5) / n)), ph = i * ga + .6;
+      out.push(new THREE.Vector3(Math.sin(th) * Math.cos(ph), Math.sin(th) * Math.sin(ph), Math.cos(th)).applyQuaternion(q));
+    }
+    return out;
+  }
+  function layout(n, pos, axis){
+    n._p = pos; const kids = n.children || []; if (!kids.length) return;
+    const d = D[n.depth + 1] * (n.id === 'studium' ? 1.15 : 1);
+    const dirs = n.depth === 0 ? [[-1, .55, .9], [1, -.55, .9], [1, .55, -.9], [-1, -.55, -.9]].map(a => new THREE.Vector3(a[0], a[1], a[2]).normalize())
+                               : fibDirs(kids.length, axis, kids.length <= 2 ? .8 : kids.length <= 4 ? 1.1 : 1.35, false);
+    kids.forEach((c, i) => layout(c, pos.clone().add(dirs[i].clone().multiplyScalar(d)), dirs[i].clone()));
+  }
+  // Kamera zielt auf die Mitte des ganzen Haufens, nicht auf den Knoten selbst
+  function cluster(n){
+    const all = [n]; const walk = c => { all.push(c); (c.children || []).forEach(walk); }; (n.children || []).forEach(walk);
+    const c = new THREE.Vector3(); all.forEach(x => c.add(x._p)); c.multiplyScalar(1 / all.length);
+    let r = RAD(n); all.forEach(x => { r = Math.max(r, x._p.distanceTo(c) + RAD(x)); });
+    return {c, r};
+  }
+  function apply(){
+    const ev = skillSel ? new Set(skillMap.get(skillSel).evidence.map(x => x.id)) : null;
+    recs.forEach((o, id) => {
+      const n = o.n;
+      if (ev) o.alpha = (ev.has(id) || id === skillSel) ? 1 : .08;
+      else if (n.kind === 'skill') o.alpha = .5;
+      else if (n === focus || isDesc(n, focus)) o.alpha = 1;
+      else if (isDesc(focus, n)) o.alpha = .5;
+      else o.alpha = .08;
+      let show = ev ? (ev.has(id) || id === skillSel) : (n === focus || n.parent === focus || (focus === TREE && n.depth === 1) || n === selected || n === hover);
+      if (n.kind === 'skill' && !ev) show = n === hover;
+      o.label.classList.toggle('hide', !show);
+      o.label.classList.toggle('f', !ev && n === focus && n !== TREE);
+    });
+    edges.forEach(e => { e.alpha = skillSel ? .05 : (e.n === focus || isDesc(e.n, focus)) ? 1 : .12; });
+  }
+  function drawSkill(id){
+    if (skillLines) { E.scene.remove(skillLines); skillLines.geometry.dispose(); skillLines.material.dispose(); skillLines = null; }
+    if (!id) return;
+    const s = skillMap.get(id), pts = [];
+    s.evidence.forEach(e => pts.push(s._p, e._p));
+    skillLines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({color: E.col('--c-skill'), transparent:true, opacity:.9}));
+    E.scene.add(skillLines);
+  }
+  function clearSkill(){ skillSel = null; markSkillbar(null); drawSkill(null); }
+  function go(n){
+    if (skillSel) clearSkill();
+    focus = n; selected = null; apply(); crumbsFor(n, go);
+    const k = cluster(n); E.flyTo(k.c, E.fit(k.r) * .95, {});
+    E.controls.autoRotate = n === TREE && !reduceMotion;
+  }
+  function select(n){ selected = n; apply(); }
+  function onPick(n){
+    if (!n) { if (sheetNode) closeSheet(); else if (skillSel) api.skill(skillSel, true); else if (focus.parent) go(focus.parent); return; }
+    if (n.kind === 'skill') { api.skill(n.id, false); return; }
+    if (n === focus) { if (n.parent) { closeSheet(); go(n.parent); } return; }
+    if (!isLeaf(n)) { closeSheet(); go(n); return; }
+    if (!isDesc(n, focus) || skillSel) go(n.parent);
+    select(n); openSheet(n);
+  }
+  function onHover(n){ if (n !== hover) { hover = n; apply(); } }
+  function update(){
+    recs.forEach(o => fadeMats(o, .14));
+    edges.forEach(e => { const t = .4 * e.alpha; e.mat.opacity += (t - e.mat.opacity) * .14; });
+    if (selected) { selRing.visible = true; selRing.position.copy(selected._p); selRing.scale.setScalar(RAD(selected) * 1.9); selRing.quaternion.copy(E.camera.quaternion); }
+    else selRing.visible = false;
+  }
+  const api = {
+    key:'galaxie', name:'Galaxie',
+    hint:'Dein Leben als Sternhaufen im Raum. Ziehen dreht, Scrollen oder zwei Finger zoomen. Antippen fliegt hinein, ins Leere tippen eine Ebene zurück. Ein Skill unten spannt Fäden zu allen Belegen.',
+    mount(){
+      E = makeEngine({onPick, onHover, update}); if (!E) return;
+      makeGeos(); recs.clear(); edges = []; const rand = rng(7);
+      E.scene.fog = new THREE.Fog(E.col('--bg'), 170, 560);
+      E.scene.add(new THREE.HemisphereLight(0xffffff, E.col('--bg'), .9));
+      const dl = new THREE.DirectionalLight(0xffffff, .7); dl.position.set(40, 80, 60); E.scene.add(dl);
+      layout(TREE, new THREE.Vector3(), new THREE.Vector3(0, 0, 1));
+      skillMap.forEach(s => {
+        if (!s.evidence.length) return;
+        const c = new THREE.Vector3(); s.evidence.forEach(e => c.add(e._p)); c.multiplyScalar(1 / s.evidence.length);
+        const out = c.lengthSq() > 1 ? c.clone().normalize() : new THREE.Vector3(0, 1, 0);
+        s._p = c.add(out.multiplyScalar(7)).add(new THREE.Vector3((rand() - .5) * 8, (rand() - .5) * 8, (rand() - .5) * 8));
+      });
+      const add = n => {
+        const isSkill = n.kind === 'skill';
+        const o = makeOrb(n, E.col(isSkill ? '--c-skill' : n.kind === 'root' ? '--c-root' : '--c-' + n.area), RAD(n), isSkill);
+        o.mesh.position.copy(n._p); E.scene.add(o.mesh);
+        o.label = E.label(o.mesh, n.kind === 'root' ? 'David Staufer' : (n.short || n.name), 'l3' + (n.kind === 'root' ? ' root' : isSkill ? ' skill' : n.depth === 1 ? ' big' : ''), new THREE.Vector3(0, -1.25, 0), n);
+        E.pick(o.mesh, n, isLeaf(n) || isSkill); recs.set(n.id, o);
+      };
+      byId.forEach(add); skillMap.forEach(s => { if (s.evidence.length) add(s); });
+      byId.forEach(n => {
+        if (!n.parent) return;
+        const mat = new THREE.LineBasicMaterial({color: E.col('--c-' + n.area), transparent:true, opacity:.4});
+        E.scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([n.parent._p, n._p]), mat));
+        edges.push({n, mat, alpha:1});
+      });
+      addStars(E, 900, rand);
+      selRing = new THREE.Mesh(GEO.ring, new THREE.MeshBasicMaterial({color: E.col('--fg'), transparent:true, opacity:.9})); selRing.visible = false; E.scene.add(selRing);
+      E.camera.position.set(80, 90, 300); E.controls.target.set(0, 0, 0);
+      focus = TREE; selected = null; skillSel = null; hover = null;
+      go(TREE);
+    },
+    unmount(){ if (E) E.dispose(); E = null; skillLines = null; markSkillbar(null); },
+    reveal(id){
+      if (!E) return; const n = byId.get(id); if (!n) { api.skill(id, false); return; }
+      if (!isLeaf(n)) { closeSheet(); go(n); return; }
+      if (!isDesc(n, focus) || skillSel) go(n.parent);
+      select(n); openSheet(n);
+    },
+    skill(id, fromBar){
+      if (!E) return;
+      if (fromBar && skillSel === id) { clearSkill(); apply(); closeSheet(); return; }
+      skillSel = id; markSkillbar(id); drawSkill(id); selected = null; apply(); openSheet(skillMap.get(id));
+      const s = skillMap.get(id), c = s._p.clone(); s.evidence.forEach(e => c.add(e._p)); c.multiplyScalar(1 / (s.evidence.length + 1));
+      let r = 4; [s, ...s.evidence].forEach(e => { r = Math.max(r, e._p.distanceTo(c) + 2); });
+      E.controls.autoRotate = false; E.flyTo(c, E.fit(r), {});
+    },
+    back(){ if (!E) return; if (skillSel) { clearSkill(); apply(); } else if (focus.parent) go(focus.parent); },
+    onSheet(){ if (!E) return; E.updateShift(); if (!sheetNode && selected) { selected = null; apply(); } }
+  };
+  return api;
+})();
+
+/* =====================================================================
+   VARIANTE B · SONNENSYSTEM – du bist die Sonne, alles kreist um dich
+   ===================================================================== */
+const Sonne = (() => {
+  let E = null, focus = TREE, selected = null, skillSel = null, hover = null, ts = 1, tsT = 1;
+  const recs = new Map(); let planetOrbits = [], constel = null, selRing = null, rootR = null;
+  const extC = new Map(), tmp = new THREE.Vector3();
+  const RAD = n => n.kind === 'root' ? 4.5 : n.depth === 1 ? ({studium:2.2, projekte:1.6, job:1.2, hobbys:1.4})[n.area] : !isLeaf(n) ? (n.depth === 2 ? .75 : .36) : (n.depth === 2 ? .55 : n.depth === 3 ? .24 : .17);
+  const GAP = d => [4, 1.3, .55, .3][d] != null ? [4, 1.3, .55, .3][d] : .25;
+  function orbitOf(n){
+    const ce = Math.max(...n.children.map(extent)), k = n.children.length;
+    return {r: Math.max(RAD(n) + GAP(n.depth) + ce, k * 2 * ce * 1.3 / (Math.PI * 2)), ce};
+  }
+  function rootOrbits(){
+    if (rootR) return rootR;
+    let start = RAD(TREE) + GAP(0);
+    const radii = TREE.children.map(p => { const e = extent(p), r = start + e; start = r + e + GAP(0); return r; });
+    rootR = {radii, last: start}; return rootR;
+  }
+  function extent(n){
+    if (extC.has(n.id)) return extC.get(n.id);
+    let e = RAD(n);
+    if (!isLeaf(n)) { if (n.kind === 'root') e = rootOrbits().last; else { const o = orbitOf(n); e = o.r + o.ce; } }
+    extC.set(n.id, e); return e;
+  }
+  function ring(r, c, parent, op){
+    const pts = []; for (let i = 0; i <= 160; i++) { const a = i / 160 * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r)); }
+    const mat = new THREE.LineBasicMaterial({color:c, transparent:true, opacity:op});
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat); parent.add(line);
+    return {line, mat, base:op, target:1};
+  }
+  function build(n, tiltG, orbitR, phase, speed, rand){
+    const pivot = new THREE.Group(); pivot.rotation.y = phase; tiltG.add(pivot);
+    const body = new THREE.Group(); body.position.set(orbitR, 0, 0); pivot.add(body);
+    const c = E.col('--c-' + n.area);
+    const o = makeOrb(n, c, RAD(n), false); body.add(o.mesh);
+    Object.assign(o, {pivot, body, speed});
+    o.label = E.label(o.mesh, n.short || n.name, 'l3' + (n.depth === 1 ? ' big' : ''), new THREE.Vector3(0, -1.3, 0), n);
+    E.pick(o.mesh, n, isLeaf(n) || n.depth >= 2); recs.set(n.id, o);
+    if (!isLeaf(n)) {
+      const {r} = orbitOf(n);
+      const tg = new THREE.Group(); tg.rotation.set((rand() - .5) * .6, 0, (rand() - .5) * .6); body.add(tg);
+      o.orbit = ring(r, c, tg, .4); o.orbit.target = 0;
+      const k = n.children.length, sp = n.depth === 1 ? .22 : .32, ph = rand() * Math.PI * 2;
+      n.children.forEach((ch, i) => build(ch, tg, r, ph + i / k * Math.PI * 2, sp, rand));
+    }
+  }
+  const wp = n => n === TREE ? new THREE.Vector3() : recs.get(n.id).mesh.getWorldPosition(new THREE.Vector3());
+  function apply(){
+    const ev = skillSel ? new Set(skillMap.get(skillSel).evidence.map(x => x.id)) : null;
+    recs.forEach((o, id) => {
+      const n = o.n;
+      if (ev) o.alpha = (ev.has(id) || n === TREE) ? 1 : .12;
+      else if (n === focus || isDesc(n, focus) || n === TREE) o.alpha = 1;
+      else if (isDesc(focus, n)) o.alpha = .6;
+      else o.alpha = .18;
+      const show = n === TREE || (ev ? ev.has(id) : (n === focus || n.parent === focus || (focus === TREE && n.depth === 1) || n === selected || n === hover));
+      o.label.classList.toggle('hide', !show);
+      o.label.classList.toggle('f', !ev && n === focus && n !== TREE);
+      if (o.orbit) o.orbit.target = ev ? .15 : n === focus ? 1 : isDesc(focus, n) ? .6 : (focus === TREE && n.depth === 1) ? .35 : 0;
+    });
+  }
+  function drawConst(id){
+    if (constel) { E.scene.remove(constel); constel.geometry.dispose(); constel.material.dispose(); constel = null; }
+    if (!id) return;
+    const ev = skillMap.get(id).evidence.map(e => recs.get(e.id)).filter(Boolean);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ev.length * 3), 3));
+    constel = new THREE.Line(g, new THREE.LineBasicMaterial({color: E.col('--c-skill'), transparent:true, opacity:.95}));
+    constel.frustumCulled = false; constel.userData.ev = ev; E.scene.add(constel);
+  }
+  function clearSkill(){ skillSel = null; markSkillbar(null); drawConst(null); }
+  const timeFor = n => reduceMotion ? 0 : n.depth === 0 ? 1 : n.depth === 1 ? .45 : .15;
+  function go(n){
+    if (skillSel) clearSkill();
+    focus = n; selected = null; apply(); crumbsFor(n, go); tsT = timeFor(n);
+    E.flyTo(() => wp(n), E.fit(extent(n)) * (n === TREE ? .8 : 1), {follow:true, minY: n === TREE ? .45 : .2});
+  }
+  function select(n){ selected = n; apply(); }
+  function onPick(n){
+    if (!n) { if (sheetNode) closeSheet(); else if (skillSel) api.skill(skillSel, true); else if (focus.parent) go(focus.parent); return; }
+    if (n === focus) { if (n.parent) { closeSheet(); go(n.parent); } return; }
+    if (!isLeaf(n)) { closeSheet(); go(n); return; }
+    if (!isDesc(n, focus) || skillSel) go(n.parent);
+    select(n); openSheet(n);
+  }
+  function onHover(n){ if (n !== hover) { hover = n; apply(); } }
+  function update(dt){
+    ts += (tsT - ts) * Math.min(1, dt * 2.5);
+    recs.forEach(o => {
+      if (o.speed) { o.pivot.rotation.y += o.speed * dt * ts; o.body.rotation.y = -o.pivot.rotation.y; }
+      fadeMats(o, .14);
+      if (o.orbit) { const t = o.orbit.base * o.orbit.target; o.orbit.mat.opacity += (t - o.orbit.mat.opacity) * .12; o.orbit.line.visible = o.orbit.mat.opacity > .01; }
+    });
+    if (constel) { const a = constel.geometry.attributes.position; constel.userData.ev.forEach((o, i) => { o.mesh.getWorldPosition(tmp); a.setXYZ(i, tmp.x, tmp.y, tmp.z); }); a.needsUpdate = true; }
+    if (selected) { selRing.visible = true; selRing.position.copy(wp(selected)); selRing.scale.setScalar(RAD(selected) * 1.9); selRing.quaternion.copy(E.camera.quaternion); }
+    else selRing.visible = false;
+  }
+  function glowTexture(){
+    const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,214,120,0.85)'); gr.addColorStop(.3, 'rgba(255,190,90,0.32)'); gr.addColorStop(1, 'rgba(255,170,60,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c);
+  }
+  const api = {
+    key:'sonne', name:'Sonnensystem',
+    hint:'Du bist die Sonne, deine Bereiche kreisen als Planeten um dich, Semester und Module als Monde. Antippen fliegt hin und folgt der Bahn, beim Eintauchen verlangsamt sich die Zeit. Ein Skill unten verbindet seine Belege zu einem Sternbild.',
+    mount(){
+      E = makeEngine({onPick, onHover, update}); if (!E) return;
+      makeGeos(); recs.clear(); extC.clear(); rootR = null; planetOrbits = []; constel = null;
+      const rand = rng(11);
+      E.scene.add(new THREE.HemisphereLight(0xffffff, E.col('--bg'), .55));
+      E.scene.add(new THREE.PointLight(0xfff2d6, 1.4, 0, 0));
+      const sunMat = new THREE.MeshBasicMaterial({color: new THREE.Color('#ffc75a'), transparent:true});
+      const sun = new THREE.Mesh(GEO.sphere, sunMat); sun.scale.setScalar(RAD(TREE)); E.scene.add(sun);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTexture(), transparent:true, depthWrite:false, blending: isDark() ? THREE.AdditiveBlending : THREE.NormalBlending}));
+      glow.scale.setScalar(30); E.scene.add(glow);
+      const so = {n:TREE, mesh:sun, mats:[sunMat], base:[1], alpha:1};
+      so.label = E.label(sun, 'David Staufer', 'l3 root', new THREE.Vector3(0, -1.3, 0), TREE); E.pick(sun, TREE, false); recs.set(TREE.id, so);
+      const {radii} = rootOrbits();
+      TREE.children.forEach((p, i) => {
+        const tg = new THREE.Group(); tg.rotation.set((rand() - .5) * .16, 0, (rand() - .5) * .16); E.scene.add(tg);
+        planetOrbits.push(ring(radii[i], E.col('--fg-3'), tg, .45));
+        build(p, tg, radii[i], rand() * Math.PI * 2, 1.4 / Math.pow(radii[i], 1.15), rand);
+      });
+      addStars(E, 900, rand);
+      selRing = new THREE.Mesh(GEO.ring, new THREE.MeshBasicMaterial({color: E.col('--fg'), transparent:true, opacity:.9})); selRing.visible = false; E.scene.add(selRing);
+      E.camera.position.set(0, 160, 240); E.controls.target.set(0, 0, 0);
+      focus = TREE; selected = null; skillSel = null; hover = null; ts = reduceMotion ? 0 : 1; tsT = ts;
+      go(TREE);
+    },
+    unmount(){ if (E) E.dispose(); E = null; constel = null; markSkillbar(null); },
+    reveal(id){
+      if (!E) return; const n = byId.get(id); if (!n) { api.skill(id, false); return; }
+      if (!isLeaf(n)) { closeSheet(); go(n); return; }
+      if (!isDesc(n, focus) || skillSel) go(n.parent);
+      select(n); openSheet(n);
+    },
+    skill(id, fromBar){
+      if (!E) return;
+      if (fromBar && skillSel === id) { clearSkill(); apply(); tsT = timeFor(focus); closeSheet(); return; }
+      if (focus !== TREE) { focus = TREE; crumbsFor(TREE, go); E.flyTo(() => new THREE.Vector3(), E.fit(extent(TREE)) * .8, {follow:true, minY:.45}); }
+      skillSel = id; markSkillbar(id); drawConst(id); selected = null; apply(); tsT = reduceMotion ? 0 : .3; openSheet(skillMap.get(id));
+    },
+    back(){ if (!E) return; if (skillSel) { clearSkill(); apply(); tsT = timeFor(focus); } else if (focus.parent) go(focus.parent); },
+    onSheet(){ if (!E) return; E.updateShift(); if (!sheetNode && selected) { selected = null; apply(); } }
+  };
+  return api;
+})();
+
+/* =====================================================================
+   VARIANTE C · INSELN – Lebenslandschaft: Bereiche als Inseln, Module als Gebäude
+   ===================================================================== */
+const Inseln = (() => {
+  let E = null, focus = TREE, selected = null, skillSel = null, hover = null;
+  const recs = new Map(); let pin = null, crystal = null, crystalLabel = null, arcs = null, noteLabel = null, spinners = [];
+  const tmp = new THREE.Vector3();
+  const ISL = {
+    studium:{pos:new THREE.Vector3(-22, 0, 7), r:17},
+    wi:{pos:new THREE.Vector3(-46, 0, -14), r:6.5},
+    projekte:{pos:new THREE.Vector3(18, 0, -12), r:11},
+    arbeit:{pos:new THREE.Vector3(19, 0, 17), r:8},
+    hobbys:{pos:new THREE.Vector3(-3, 0, -27), r:9}
+  };
+  let C = {};
+  const mat = (color, extra) => new THREE.MeshStandardMaterial(Object.assign({color, roughness:.55, metalness:.04}, extra || {}));
+  // Gebäude: fertig gebaut = bestanden, Baugerüst = läuft, Glas = geplant
+  function building(kind, w, h, c, vis){
+    const g = new THREE.Group(), mats = [], base = [];
+    const geoOf = hh => kind === 'cyl' ? new THREE.CylinderGeometry(w / 2, w / 2, hh, 32) : new THREE.BoxGeometry(w, hh, w);
+    const solid = hh => { const m = mat(c, {transparent:true, opacity:1}); const me = new THREE.Mesh(geoOf(hh), m); me.position.y = hh / 2; me.castShadow = true; me.receiveShadow = true; g.add(me); mats.push(m); base.push(1); };
+    const ghost = () => {
+      const geo = geoOf(h), m = mat(c, {transparent:true, opacity:.16, depthWrite:false}), me = new THREE.Mesh(geo, m); me.position.y = h / 2; g.add(me); mats.push(m); base.push(.16);
+      const lm = new THREE.LineBasicMaterial({color:c, transparent:true, opacity:.85}), ls = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), lm); ls.position.y = h / 2; g.add(ls); mats.push(lm); base.push(.85);
+    };
+    if (vis === 'done') solid(h); else if (vis === 'now') { solid(h * .55); ghost(); } else ghost();
+    g.userData.mats = mats; g.userData.base = base; g.userData.h = h; return g;
+  }
+  function hobbyObj(id, c){
+    const g = new THREE.Group(), mats = [], base = [];
+    const add = (geo, m, y, rot) => { m.transparent = true; const me = new THREE.Mesh(geo, m); me.position.y = y; if (rot) me.rotation.set(rot[0], rot[1], rot[2]); me.castShadow = true; me.receiveShadow = true; g.add(me); mats.push(m); base.push(1); return me; };
+    add(new THREE.CylinderGeometry(1.4, 1.5, .5, 32), mat(c.clone().lerp(C.surf, .55)), .25);
+    let h = 2.8;
+    if (id === 'h-fussball') spinners.push(add(new THREE.IcosahedronGeometry(1, 1), mat(new THREE.Color('#f2f2f4'), {flatShading:true, roughness:.4}), 1.55));
+    else if (id === 'h-maerkte') { [[-.6, 1.0], [0, 1.7], [.6, 2.5]].forEach(([x, hh]) => { add(new THREE.BoxGeometry(.45, hh, .45), mat(c), .5 + hh / 2).position.x = x; }); h = 3.1; }
+    else if (id === 'h-paddle') { add(new THREE.CylinderGeometry(.85, .85, .16, 32), mat(c), 2.05, [Math.PI / 2, 0, 0]); add(new THREE.CylinderGeometry(.11, .13, 1.1, 12), mat(C.fg3), 1.0); add(new THREE.SphereGeometry(.22, 16, 12), mat(new THREE.Color('#d8ef5a')), 1.35).position.x = 1.0; h = 3.1; }
+    else { add(new THREE.ConeGeometry(1.35, 2.5, 6), mat(new THREE.Color('#8e9aaf'), {flatShading:true}), 1.75); add(new THREE.ConeGeometry(.56, 1.0, 6), mat(new THREE.Color('#ffffff'), {flatShading:true}), 2.5); h = 3.2; }
+    g.userData.mats = mats; g.userData.base = base; g.userData.h = h; return g;
+  }
+  function reg(n, obj, extra){
+    const r = Object.assign({n, obj, mats: obj.userData.mats || [], base: obj.userData.base || [], alpha:1, h: obj.userData.h || 1, kind:'leaf'}, extra || {});
+    recs.set(n.id, r); E.pick(obj, n, false); return r;
+  }
+  function placeLeaf(n, obj, x, z){
+    obj.position.set(x, 0, z); E.scene.add(obj);
+    const r = reg(n, obj);
+    r.label = E.label(obj, n.short || n.name, 'l3 mid sm', new THREE.Vector3(0, r.h + 1, 0), n);
+    return r;
+  }
+  function island(key, node, c){
+    const {pos, r} = ISL[key];
+    const side = mat(c.clone().lerp(C.surf, .5), {roughness:.9}), top = mat(c.clone().lerp(C.surf, .8), {roughness:.95});
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, 1.6, 72), [side, top, side]);
+    m.position.set(pos.x, -.8, pos.z); m.receiveShadow = true; E.scene.add(m);
+    const anchor = new THREE.Object3D(); anchor.position.set(pos.x, .7, pos.z + r + 1.4); E.scene.add(anchor);
+    return reg(node, m, {kind:'island', label: E.label(anchor, node.name, 'l3 big mid', null, node)});
+  }
+  function bridge(a, ra, b, rb){
+    const dir = b.clone().sub(a).setY(0).normalize(), s = a.clone().add(dir.clone().multiplyScalar(ra - .6)), e = b.clone().sub(dir.clone().multiplyScalar(rb - .6));
+    const len = s.distanceTo(e), m = new THREE.Mesh(new THREE.BoxGeometry(len, .3, 1.5), mat(C.surf.clone().lerp(C.fg, .08), {roughness:.8}));
+    m.position.copy(s.clone().lerp(e, .5)).setY(-.12); m.rotation.y = -Math.atan2(dir.z, dir.x); m.receiveShadow = true; E.scene.add(m);
+    return s.clone().lerp(e, .5);
+  }
+  const container = n => n.parent;
+  const upOf = n => (n.parent && n.parent.id === 'kids') ? byId.get('studium') : TREE;
+  const studiumView = () => focus.id === 'studium' || focus.id === 'kids' || (focus.parent && focus.parent.id === 'kids');
+  function apply(){
+    const ev = skillSel ? new Set(skillMap.get(skillSel).evidence.map(x => x.id)) : null, stud = studiumView();
+    recs.forEach((r, id) => {
+      const n = r.n;
+      r.alpha = ev ? ((ev.has(id) || r.kind !== 'leaf') ? 1 : .18) : 1;
+      if (!r.label) return;
+      let show;
+      if (ev) show = ev.has(id) || n === TREE;
+      else if (n === TREE) show = true;
+      else if (r.kind === 'island') show = focus === TREE || focus === n || ((n.id === 'studium' || n.id === 'wi') && (stud || focus.id === 'wi'));
+      else if (r.kind === 'row') show = stud;
+      else show = focus === container(n) || n === selected || n === hover;
+      r.label.classList.toggle('hide', !show);
+    });
+    if (noteLabel) noteLabel.classList.toggle('hide', !(stud || focus.id === 'wi'));
+  }
+  function target(n){
+    if (n === TREE) return {p: new THREE.Vector3(-14, 0, -3), d: E.fit(46) * (narrow() ? 1.02 : .9), minY: .62};
+    if (n.id === 'studium' || n.id === 'kids') return {p: ISL.studium.pos.clone(), d: E.fit(19), minY: .6};
+    if (ISL[n.id]) return {p: ISL[n.id].pos.clone(), d: E.fit(ISL[n.id].r + 3), minY: .58};
+    const r = recs.get(n.id); if (r && r.center) return {p: r.center.clone(), d: E.fit(9), minY: .62};
+    return {p: new THREE.Vector3(), d: 100, minY: .6};
+  }
+  function drawSkill(id){
+    if (arcs) { E.scene.remove(arcs); arcs.traverse(o => { if (o.geometry) o.geometry.dispose(); }); arcs.userData.mat.dispose(); arcs = null; }
+    crystal.visible = !!id; crystalLabel.classList.toggle('hide', !id);
+    if (!id) return;
+    crystalLabel.firstChild.textContent = skillMap.get(id).name;
+    arcs = new THREE.Group(); const m = new THREE.LineBasicMaterial({color: E.col('--c-skill'), transparent:true, opacity:.92}); arcs.userData.mat = m;
+    const top = crystal.position.clone();
+    skillMap.get(id).evidence.forEach(e => {
+      const r = recs.get(e.id); if (!r) return;
+      const end = r.obj.getWorldPosition(new THREE.Vector3()); end.y += r.h + .2;
+      const mid = top.clone().lerp(end, .5); mid.y += 7;
+      arcs.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(top, mid, end).getPoints(40)), m));
+    });
+    E.scene.add(arcs);
+  }
+  function clearSkill(){ skillSel = null; markSkillbar(null); drawSkill(null); }
+  function go(n){
+    if (skillSel) clearSkill();
+    focus = n; selected = null; apply(); crumbsFor(n, go);
+    const t = target(n); E.flyTo(t.p, t.d, {minY: t.minY});
+    E.controls.autoRotate = n === TREE && !reduceMotion;
+  }
+  function select(n){ selected = n; apply(); }
+  function onPick(n){
+    if (!n) { if (sheetNode) closeSheet(); else if (skillSel) api.skill(skillSel, true); else if (focus !== TREE) go(upOf(focus)); return; }
+    if (n === TREE) { closeSheet(); if (focus !== TREE) go(TREE); return; }
+    if (!isLeaf(n)) { closeSheet(); if (n === focus) go(upOf(n)); else go(n); return; }
+    if (focus !== container(n) || skillSel) go(container(n));
+    select(n); openSheet(n);
+  }
+  function onHover(n){ if (n !== hover) { hover = n; apply(); } }
+  function update(dt, t){
+    recs.forEach(r => fadeMats(r, .14));
+    if (!reduceMotion) spinners.forEach(s => { s.rotation.y += dt * .6; });
+    if (crystal.visible) crystal.rotation.y += dt * .8;
+    if (selected) { const r = recs.get(selected.id); r.obj.getWorldPosition(tmp); pin.visible = true; pin.position.set(tmp.x, tmp.y + r.h + 1.6 + (reduceMotion ? 0 : Math.sin(t * 3) * .18), tmp.z); }
+    else pin.visible = false;
+  }
+  const api = {
+    key:'inseln', name:'Inseln',
+    hint:'Jeder Bereich ist eine Insel, jedes Modul ein Gebäude mit ECTS als Höhe. Fertig gebaut heißt bestanden, ein Baugerüst läuft gerade, Glas ist geplant. Antippen fliegt hin, ein Skill unten spannt Bögen zu allen Belegen.',
+    mount(){
+      E = makeEngine({onPick, onHover, update, shadows:true}); if (!E) return;
+      makeGeos(); recs.clear(); spinners = []; arcs = null;
+      C = {surf: E.col('--surface'), bg: E.col('--bg'), fg: E.col('--fg'), fg3: E.col('--fg-3'), studium: E.col('--c-studium'), job: E.col('--c-job'), projekte: E.col('--c-projekte'), hobbys: E.col('--c-hobbys'), root: E.col('--c-root')};
+      const water = C.bg.clone().lerp(C.studium, isDark() ? .12 : .1);
+      E.scene.background = C.bg; E.scene.fog = new THREE.Fog(C.bg, 150, 400);
+      E.scene.add(new THREE.HemisphereLight(0xffffff, water, isDark() ? .55 : .7));
+      const dl = new THREE.DirectionalLight(0xffffff, isDark() ? .75 : .9); dl.position.set(40, 90, 55); dl.target.position.set(-10, 0, -3);
+      dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048); Object.assign(dl.shadow.camera, {left:-80, right:80, top:80, bottom:-80, near:10, far:260}); dl.shadow.bias = -.0006; dl.shadow.normalBias = .02;
+      E.scene.add(dl, dl.target);
+      const sea = new THREE.Mesh(new THREE.CircleGeometry(420, 72), mat(water, {roughness:.9})); sea.rotation.x = -Math.PI / 2; sea.position.y = -1; sea.receiveShadow = true; E.scene.add(sea);
+
+      // Mitte: David
+      const plaza = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.7, 1.6, 64), [mat(C.surf.clone().lerp(C.fg, .1)), mat(C.surf), mat(C.surf)]); plaza.position.y = -.8; plaza.receiveShadow = true; E.scene.add(plaza);
+      const mon = new THREE.Group(), pm = mat(C.surf.clone().lerp(C.fg, .25), {transparent:true}), om = mat(C.root, {emissive:C.root, emissiveIntensity:.2, transparent:true});
+      const pil = new THREE.Mesh(new THREE.CylinderGeometry(.45, .6, 4, 24), pm); pil.position.y = 2; pil.castShadow = true; mon.add(pil);
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(1.1, 32, 24), om); orb.position.y = 5.1; orb.castShadow = true; mon.add(orb);
+      mon.userData = {mats:[pm, om], base:[1, 1], h:6.2}; E.scene.add(mon);
+      const rootRec = reg(TREE, mon, {kind:'root'}); E.pick(plaza, TREE, false);
+      rootRec.label = E.label(mon, 'David Staufer', 'l3 root mid', new THREE.Vector3(0, 7.4, 0), TREE);
+
+      // Inseln + Brücken
+      island('studium', byId.get('studium'), C.studium); island('wi', byId.get('wi'), C.studium);
+      island('projekte', byId.get('projekte'), C.projekte); island('arbeit', byId.get('arbeit'), C.job); island('hobbys', byId.get('hobbys'), C.hobbys);
+      ['studium', 'projekte', 'arbeit', 'hobbys'].forEach(k => bridge(new THREE.Vector3(), 4.5, ISL[k].pos, ISL[k].r));
+      const mid = bridge(ISL.studium.pos, ISL.studium.r, ISL.wi.pos, ISL.wi.r);
+      const na = new THREE.Object3D(); na.position.set(mid.x, 1, mid.z); E.scene.add(na); noteLabel = E.label(na, 'Wechsel WI → KIDS', 'l3 mid note');
+
+      // Studium: eine Reihe pro Semester, vorne die Vergangenheit, hinten die Zukunft
+      const S = ISL.studium;
+      byId.get('kids').children.forEach((sem, i) => {
+        const z = S.pos.z + 7.5 - i * 3, n = sem.children.length, span = n * 2.2;
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(span + .8, .14, 2.3), mat(C.studium.clone().lerp(C.surf, .62), {roughness:.9}));
+        plate.position.set(S.pos.x, .07, z); plate.receiveShadow = true; E.scene.add(plate);
+        const an = new THREE.Object3D(); an.position.set(S.pos.x - span / 2 - 1.9, .6, z); E.scene.add(an);
+        reg(sem, plate, {kind:'row', center: new THREE.Vector3(S.pos.x, 0, z), label: E.label(an, sem.short, 'l3 mid row', null, sem)});
+        sem.children.forEach((m, j) => placeLeaf(m, building('box', 1.5, .6 + (m.ects || 5) * .3, C.studium, visOf(m)), S.pos.x - span / 2 + 1.1 + j * 2.2, z + .14));
+      });
+      byId.get('wi').children.forEach((m, j) => placeLeaf(m, building('box', 1.5, .6 + (m.ects || 5) * .3, C.studium, 'done'), ISL.wi.pos.x + (j % 3 - 1) * 2.4, ISL.wi.pos.z + (j < 3 ? -1.5 : 1.5)));
+      // Projekte als runde Pavillons
+      byId.get('projekte').children.forEach((p, i, a) => { const ang = i / a.length * Math.PI * 2 + .4; placeLeaf(p, building('cyl', 2.4, 3.6, C.projekte, visOf(p)), ISL.projekte.pos.x + Math.cos(ang) * 6, ISL.projekte.pos.z + Math.sin(ang) * 6); });
+      // Arbeit: Büroturm und kleines Haus
+      const t11 = building('box', 3, 6.5, C.job, 'done');
+      const bm = new THREE.MeshBasicMaterial({color:C.job, transparent:true}); const beacon = new THREE.Mesh(new THREE.SphereGeometry(.35, 16, 12), bm); beacon.position.y = 6.95; t11.add(beacon); t11.userData.mats.push(bm); t11.userData.base.push(1); t11.userData.h = 7.3;
+      placeLeaf(byId.get('j-tech11'), t11, ISL.arbeit.pos.x - 2, ISL.arbeit.pos.z - .5);
+      const house = new THREE.Group(), hm = mat(C.job.clone().lerp(C.surf, .35), {transparent:true}), rm = mat(C.job, {transparent:true});
+      const hb = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.8, 2.4), hm); hb.position.y = .9; hb.castShadow = true; house.add(hb);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.85, 1.3, 4), rm); roof.position.y = 2.45; roof.rotation.y = Math.PI / 4; roof.castShadow = true; house.add(roof);
+      house.userData = {mats:[hm, rm], base:[1, 1], h:3.1};
+      placeLeaf(byId.get('j-erste'), house, ISL.arbeit.pos.x + 3, ISL.arbeit.pos.z + 1.5);
+      // Hobbys: kleine Objekte, die später zu den Motivationsmodellen werden
+      byId.get('hobbys').children.forEach((h, i) => placeLeaf(h, hobbyObj(h.id, C.hobbys), ISL.hobbys.pos.x + (i % 2 ? 3.2 : -3.2), ISL.hobbys.pos.z + (i < 2 ? -3 : 3)));
+
+      // Skill-Kristall und Markierungsnadel
+      crystal = new THREE.Mesh(GEO.octa, mat(E.col('--c-skill'), {emissive:E.col('--c-skill'), emissiveIntensity:.45})); crystal.scale.setScalar(1.4); crystal.position.set(-8, 21, -3); crystal.visible = false; E.scene.add(crystal);
+      crystalLabel = E.label(crystal, '', 'l3 mid skill hide', new THREE.Vector3(0, 1.9, 0));
+      pin = new THREE.Mesh(new THREE.ConeGeometry(.45, 1.1, 20), new THREE.MeshStandardMaterial({color:C.fg, roughness:.4})); pin.rotation.x = Math.PI; pin.visible = false; E.scene.add(pin);
+
+      E.controls.maxPolarAngle = 1.32; E.controls.minDistance = 4; E.controls.maxDistance = 240;
+      E.camera.position.set(-10, 120, 170); E.controls.target.set(-10, 0, -3);
+      focus = TREE; selected = null; skillSel = null; hover = null;
+      go(TREE);
+    },
+    unmount(){ if (E) E.dispose(); E = null; arcs = null; markSkillbar(null); },
+    reveal(id){
+      if (!E) return; const n = byId.get(id); if (!n) { api.skill(id, false); return; }
+      if (!isLeaf(n)) { closeSheet(); go(n); return; }
+      if (focus !== container(n) || skillSel) go(container(n));
+      select(n); openSheet(n);
+    },
+    skill(id, fromBar){
+      if (!E) return;
+      if (fromBar && skillSel === id) { clearSkill(); apply(); closeSheet(); return; }
+      if (focus !== TREE) { focus = TREE; crumbsFor(TREE, go); }
+      const t = target(TREE); E.controls.autoRotate = false; E.flyTo(t.p, t.d, {minY: t.minY});
+      skillSel = id; markSkillbar(id); selected = null; drawSkill(id); apply(); openSheet(skillMap.get(id));
+    },
+    back(){ if (!E) return; if (skillSel) { clearSkill(); apply(); } else if (focus !== TREE) go(upOf(focus)); },
+    onSheet(){ if (!E) return; E.updateShift(); if (!sheetNode && selected) { selected = null; apply(); } }
+  };
+  return api;
+})();
+
+/* =====================================================================
+   SCHALTER + ROUTING
+   ===================================================================== */
+const VARIANTS = [Galaxie, Sonne, Inseln];
+const LETTERS = ['A', 'B', 'C'];
+function syncFade(){ document.documentElement.style.setProperty('--fade-h', Math.round(headerBottom() + 28) + 'px'); }
+window.addEventListener('resize', syncFade);
+function activate(key, force){
+  const v = VARIANTS.find(x => x.key === key) || VARIANTS[0];
+  if (active === v && !force) return;
+  if (active) active.unmount();
+  closeSheet(); stage.innerHTML = ''; markSkillbar(null);
+  active = v;
+  $('#sw-name').textContent = LETTERS[VARIANTS.indexOf(v)] + ' · ' + v.name;
+  $('#hint').textContent = v.hint;
+  syncFade();
+  v.mount();
+  if (location.hash !== '#' + v.key) { try { history.replaceState(null, '', '#' + v.key); } catch (e) { /* Rahmen erlaubt es nicht */ } }
+}
+function cycle(dir){ const i = VARIANTS.indexOf(active); activate(VARIANTS[(i + dir + VARIANTS.length) % VARIANTS.length].key); }
+$('#sw-prev').addEventListener('click', () => cycle(-1));
+$('#sw-next').addEventListener('click', () => cycle(1));
+window.addEventListener('hashchange', () => activate(location.hash.slice(1)));
+window.addEventListener('keydown', e => {
+  if (e.target && e.target.closest && e.target.closest('input,textarea,[contenteditable]')) return;
+  if (e.key === 'ArrowRight') cycle(1);
+  else if (e.key === 'ArrowLeft') cycle(-1);
+  else if (e.key === 'Escape') { if (sheetNode) closeSheet(); else if (active) active.back(); }
+});
+// Farbschema gewechselt: Szene mit den neuen Farben neu aufbauen
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (active) activate(active.key, true); });
+activate((location.hash || '#galaxie').slice(1));
+})();
+</script>

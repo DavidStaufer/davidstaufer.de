@@ -1,0 +1,135 @@
+---
+// Klassische Ansicht: alles als Lebenslauf-Liste, ohne 3D. Für alle, die nicht spielen wollen, und für Suchmaschinen.
+import Base from '../layouts/Base.astro';
+import { loadGraph, buildTree, type RawNode } from '../lib/graph';
+
+const { nodes, skills } = await loadGraph();
+const { root, byKey } = buildTree(nodes);
+type T = RawNode & { children: T[] };
+const area = (a: string) => root.children.find(c => c.area === a) as T | undefined;
+const studium = area('studium'), arbeit = area('job'), projekte = area('projekte'), hobbys = area('hobbys');
+
+const STATUS: Record<string, [string, string]> = {
+  'bestanden': ['done', 'Bestanden'], 'läuft': ['now', 'Läuft'], 'geplant': ['plan', 'Geplant'],
+  'v1': ['done', 'Online'], 'arbeit': ['now', 'In Arbeit'], 'lokal': ['plan', 'Nur lokal'],
+  'aktuell': ['now', 'Aktuell'], 'frueher': ['done', 'Abgeschlossen'],
+};
+const textLabel = (n: RawNode) => n.kind === 'module'
+  ? ({ 'bestanden': 'Was ich mitnehme', 'läuft': 'Was ich gerade lerne', 'geplant': 'Darum geht’s' } as Record<string, string>)[n.status ?? '']
+  : null;
+const evidence = new Map<string, number>();
+nodes.filter(n => !byKey.get(n.key)!.children.length).forEach(n => n.skills.forEach(s => evidence.set(s, (evidence.get(s) ?? 0) + 1)));
+const skillList = skills.filter(s => evidence.get(s.id)).sort((a, b) => evidence.get(b.id)! - evidence.get(a.id)!);
+const ectsDone = nodes.filter(n => n.kind === 'module' && n.status === 'bestanden').reduce((s, n) => s + (n.ects ?? 0), 0);
+---
+<Base title="David Staufer · Lebenslauf" description="David Staufer: Studium KI & Data Science in Würzburg, Werkstudent im Softwaretest, Projekte und Hobbys als übersichtliche Liste.">
+  <main class="page">
+    <a class="back" href="/">← Zur 3D-Ansicht</a>
+    <header class="hero">
+      <span class="sun" aria-hidden="true">DS</span>
+      <div>
+        <h1>{root.name}</h1>
+        <p class="sub">{root.sub}</p>
+      </div>
+    </header>
+    <p class="about">{root.text}</p>
+    <ul class="contact">
+      <li><a href="https://github.com/DavidStaufer" rel="noopener">GitHub · DavidStaufer</a></li>
+      <li class="muted">LinkedIn · Link folgt</li>
+      <li class="muted">E-Mail · folgt</li>
+    </ul>
+
+    {studium && (
+      <section style="--c:var(--c-studium)">
+        <h2>Studium <small>{studium.sub} · {ectsDone} ECTS bestanden</small></h2>
+        {studium.children.flatMap(g => g.children.some(c => c.children.length) ? g.children.map(s => ({ title: `${g.name} · ${s.name}`, sub: s.sub, items: s.children })) : [{ title: g.name, sub: g.sub, items: g.children }]).map(block => (
+          <div class="block">
+            <h3>{block.title} <small>{block.sub}</small></h3>
+            <ul class="items">
+              {block.items.map(m => (
+                <li>
+                  <div class="row">
+                    <span class={`dot ${STATUS[m.status ?? '']?.[0] ?? 'done'}`}></span>
+                    <b>{m.name}</b>
+                    <span class="meta">{[m.ects ? `${m.ects} ECTS` : null, STATUS[m.status ?? '']?.[1]].filter(Boolean).join(' · ')}</span>
+                  </div>
+                  {m.tags.length > 0 && <p class="tags">{m.tags.join(' · ')}</p>}
+                  {m.text && <p class="text"><span class="lbl">{textLabel(m)}:</span> {m.text}</p>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+    )}
+
+    {[arbeit, projekte, hobbys].filter(Boolean).map(a => (
+      <section style={`--c:var(--c-${a!.area})`}>
+        <h2>{a!.name}</h2>
+        <ul class="items">
+          {a!.children.map(n => (
+            <li>
+              <div class="row">
+                <span class={`dot ${STATUS[n.status ?? '']?.[0] ?? 'done'}`}></span>
+                <b>{n.name}</b>
+                <span class="meta">{[n.sub, STATUS[n.status ?? '']?.[1]].filter(Boolean).join(' · ')}</span>
+              </div>
+              {n.tags.length > 0 && <p class="tags">{n.tags.join(' · ')}</p>}
+              {n.text && <p class="text">{n.text}</p>}
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
+
+    <section style="--c:var(--c-skill)">
+      <h2>Skills <small>Zahl = Anzahl der Belege</small></h2>
+      <ul class="chips">{skillList.map(s => <li>{s.name} <span>{evidence.get(s.id)}</span></li>)}</ul>
+    </section>
+
+    <footer>Gebaut mit Claude Code · <a href="/">3D-Ansicht</a></footer>
+  </main>
+</Base>
+
+<style>
+  :global(:root){
+    --bg:#07080c; --surface:#16171c; --fg:#f5f5f7; --fg-2:#a1a1a8; --fg-3:#5c5e66; --line:rgba(245,245,247,.12);
+    --c-studium:#0a84ff; --c-job:#ff9f0a; --c-projekte:#30d158; --c-hobbys:#ff375f; --c-skill:#8e8bff; --sun:#ffc75a;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+    --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif;
+    color-scheme:dark;
+  }
+  :global(body){margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 var(--font); -webkit-font-smoothing:antialiased}
+  .page{max-width:760px; margin:0 auto; padding-block:calc(28px + env(safe-area-inset-top,0px)) 64px; padding-left:max(16px, env(safe-area-inset-left,0px)); padding-right:max(16px, env(safe-area-inset-right,0px))}
+  a{color:#64a8ff}
+  .back{display:inline-block; font-size:14px; text-decoration:none; margin-bottom:28px}
+  .hero{display:flex; align-items:center; gap:16px}
+  .sun{flex:none; width:56px; height:56px; border-radius:50%; display:grid; place-items:center; background:var(--sun); color:#1d1406; font:700 18px var(--font-display); box-shadow:0 0 28px rgba(255,199,90,.4)}
+  h1{margin:0; font:700 clamp(30px, 6vw, 44px)/1.05 var(--font-display); letter-spacing:-.03em}
+  .sub{margin:4px 0 0; color:var(--fg-2)}
+  .about{max-width:62ch; margin:22px 0 10px; font-size:17px}
+  .contact{list-style:none; padding:0; margin:0 0 8px; display:flex; flex-wrap:wrap; gap:6px 18px; font-size:14px}
+  .muted{color:var(--fg-3)}
+  section{margin-top:44px}
+  h2{margin:0 0 14px; font:700 24px/1.2 var(--font-display); letter-spacing:-.02em; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px}
+  h2::before{content:""; width:12px; height:12px; border-radius:50%; background:var(--c); align-self:center}
+  h2 small, h3 small{font:500 13px var(--font); color:var(--fg-2); letter-spacing:0}
+  .block{margin-top:22px}
+  h3{margin:0 0 6px; font-size:15px; font-weight:650; color:var(--fg)}
+  .items{list-style:none; margin:0; padding:0; border-top:1px solid var(--line)}
+  .items li{padding:12px 0; border-bottom:1px solid var(--line)}
+  .row{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px}
+  .row b{font-weight:600}
+  .meta{font-size:13.5px; color:var(--fg-2); font-variant-numeric:tabular-nums}
+  .dot{width:10px; height:10px; border-radius:50%; box-sizing:border-box; flex:none; align-self:center}
+  .dot.done{background:var(--c)}
+  .dot.now{border:2px solid var(--c); background:color-mix(in srgb, var(--c) 30%, transparent)}
+  .dot.plan{border:1.5px dashed var(--c)}
+  .tags{margin:4px 0 0 20px; font-size:13.5px; color:var(--fg-2)}
+  .text{margin:6px 0 0 20px; max-width:62ch; font-size:15px}
+  .lbl{color:var(--fg-2)}
+  .chips{list-style:none; padding:0; margin:0; display:flex; flex-wrap:wrap; gap:8px}
+  .chips li{padding:6px 12px; border-radius:999px; border:1px solid color-mix(in srgb, var(--c) 40%, transparent); background:color-mix(in srgb, var(--c) 12%, transparent); font-size:14px}
+  .chips span{color:var(--fg-2); font-size:12.5px; margin-left:4px; font-variant-numeric:tabular-nums}
+  footer{margin-top:56px; font-size:13px; color:var(--fg-3)}
+</style>

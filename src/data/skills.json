@@ -1,0 +1,78 @@
+[
+  {
+    "id": "python",
+    "name": "Python"
+  },
+  {
+    "id": "numpy",
+    "name": "NumPy"
+  },
+  {
+    "id": "pytorch",
+    "name": "PyTorch"
+  },
+  {
+    "id": "sklearn",
+    "name": "scikit-learn"
+  },
+  {
+    "id": "xgboost",
+    "name": "XGBoost"
+  },
+  {
+    "id": "swift",
+    "name": "Swift & SwiftUI"
+  },
+  {
+    "id": "ts",
+    "name": "TypeScript & React"
+  },
+  {
+    "id": "java",
+    "name": "Java"
+  },
+  {
+    "id": "sql",
+    "name": "SQL"
+  },
+  {
+    "id": "git",
+    "name": "Git"
+  },
+  {
+    "id": "linalg",
+    "name": "Lineare Algebra"
+  },
+  {
+    "id": "analysis",
+    "name": "Analysis & Optimierung"
+  },
+  {
+    "id": "stats",
+    "name": "Statistik"
+  },
+  {
+    "id": "ml",
+    "name": "Maschinelles Lernen"
+  },
+  {
+    "id": "dl",
+    "name": "Deep Learning"
+  },
+  {
+    "id": "algo",
+    "name": "Algorithmen"
+  },
+  {
+    "id": "testing",
+    "name": "Software-Testing"
+  },
+  {
+    "id": "netze",
+    "name": "Rechnernetze"
+  },
+  {
+    "id": "datenq",
+    "name": "Datenqualität"
+  }
+]
